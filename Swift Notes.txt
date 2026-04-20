@@ -1,0 +1,21 @@
+Swift Foundation - For logics in ios development.
+Swift Ui - Design the frontEnd of the ios application.
+
+If you want to add package or dependency in the swift click the file in top of the menu bar in XCode project and add(paste) the package url.
+Click the package(dependency) and click add package and then select the target with associate project watch app and then click continue.
+Use the package functionality in the code in the swift.
+
+Referrence Site : https://www.hackingwithswift.com/quick-start/swiftui, https://www.codecademy.com/resources/docs/swiftui/viewmodifier/font
+Swift UI :
+
+    Text :
+        .font(Font.custom("MyFont", size: 18))  -> FontFamily
+        .padding(.horizandal, .vertical)   -> padding
+        .background()  
+        .foregroundColor()  -> Font color
+        .kerning(amount(-5))
+
+     .stroke or strokeBorder(.blue, lineWidth: 45) -> Make the border line 
+
+
+Optional type ah irutha matu tha 'if let' concept use panamudiyu 
