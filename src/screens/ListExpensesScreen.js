@@ -1,16 +1,8 @@
+import { COLORS, SHADOW } from '../theme/theme';
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import {
-  View,
-  Text,
-  SectionList,
-  StyleSheet,
-  ActivityIndicator,
-  Dimensions,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  Animated,
-  RefreshControl
+  View, Text, SectionList, StyleSheet, ActivityIndicator,
+  Dimensions, TouchableOpacity, Modal, TextInput, Animated,
 } from "react-native";
 import { useTransactions } from "../context/TransactionContext";
 import Icon from "react-native-vector-icons/Ionicons";
@@ -19,11 +11,13 @@ import { Swipeable } from 'react-native-gesture-handler';
 import firestore from "@react-native-firebase/firestore";
 import auth from "@react-native-firebase/auth";
 import moment from "moment";
+import LinearGradient from "react-native-linear-gradient";
+import { StatusBar } from "react-native";
 
 const ListExpensesScreen = () => {
   const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions } = useTransactions();
 
-  // ── Toast ────────────────────────────────────────────────────────────────────
+  // ── Toast ─────────────────────────────────────────────────────────────────────
   const [showToast, setShowToast] = useState(true);
   const toastAnim = useRef(new Animated.Value(80)).current;
   useEffect(() => {
@@ -32,88 +26,62 @@ const ListExpensesScreen = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // ── Edit modal ───────────────────────────────────────────────────────────────
+  // ── Edit modal ────────────────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [editAmount, setEditAmount] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editSubcategory, setEditSubcategory] = useState("");
   const [editLoading, setEditLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    refreshTransactions();
-    setTimeout(() => setRefreshing(false), 2000);
-  }, []);
-
   const [showTime, setShowTime] = useState(true);
 
-  // ── Search state ─────────────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const searchInputRef = useRef(null);
   const searchBarAnim = useRef(new Animated.Value(0)).current;
 
-  // Animate search bar border glow on focus
   useEffect(() => {
-    Animated.timing(searchBarAnim, {
-      toValue: searchFocused ? 1 : 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
+    Animated.timing(searchBarAnim, { toValue: searchFocused ? 1 : 0, duration: 200, useNativeDriver: false }).start();
   }, [searchFocused]);
 
   const searchBorderColor = searchBarAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#EBEBEB', primaryColor || '#37474F'],
+    outputRange: ['rgba(255,255,255,0.1)', '#00C9A7'],
   });
 
-  // ── Base transactions (month filter) ─────────────────────────────────────────
+  // ── Transactions ──────────────────────────────────────────────────────────────
   const { allTransactions, loading } = useMemo(() => {
     const filterMonth = (arr) => arr.filter((t) => {
       const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
       return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
     });
-    const monthExpenses = filterMonth(expenses);
-    const monthIncome = filterMonth(incomes);
-    const all = [...monthExpenses, ...monthIncome].sort((a, b) => {
-      const dateA = new Date(a.date?.seconds ? a.date.seconds * 1000 : a.date);
-      const dateB = new Date(b.date?.seconds ? b.date.seconds * 1000 : b.date);
-      return dateB - dateA;
+    const all = [...filterMonth(expenses), ...filterMonth(incomes)].sort((a, b) => {
+      const da = new Date(a.date?.seconds ? a.date.seconds * 1000 : a.date);
+      const db = new Date(b.date?.seconds ? b.date.seconds * 1000 : b.date);
+      return db - da;
     });
-    return {
-      allTransactions: all,
-      loading: expenses.length === 0 && incomes.length === 0,
-    };
+    return { allTransactions: all, loading: expenses.length === 0 && incomes.length === 0 };
   }, [expenses, incomes, selectedMonth, selectedYear]);
 
-  // ── Search filter ─────────────────────────────────────────────────────────────
   const filteredTransactions = useMemo(() => {
     if (!searchQuery.trim()) return allTransactions;
     const q = searchQuery.trim().toLowerCase();
-    return allTransactions.filter((t) => {
-      const cat = (t.category || "").toLowerCase();
-      const sub = (t.subcategory || "").toLowerCase();
-      const note = (t.note || "").toLowerCase();
-      return cat.includes(q) || sub.includes(q) || note.includes(q);
-    });
+    return allTransactions.filter((t) =>
+      (t.category || "").toLowerCase().includes(q) ||
+      (t.subcategory || "").toLowerCase().includes(q) ||
+      (t.note || "").toLowerCase().includes(q)
+    );
   }, [allTransactions, searchQuery]);
 
-  // ── Sections & totals derived from filtered list ──────────────────────────────
   const { sections, totalExpense, totalIncome, netTotal, isNetPositive,
     filteredExpense, filteredIncome, filteredNet, isFilteredNetPositive } = useMemo(() => {
-    // Full-month totals (always from allTransactions)
     const expenseTotal = allTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
-    const incomeTotal = allTransactions.filter(t => t.type !== 'expense').reduce((s, t) => s + (t.amount || 0), 0);
+    const incomeTotal  = allTransactions.filter(t => t.type !== 'expense').reduce((s, t) => s + (t.amount || 0), 0);
     const net = incomeTotal - expenseTotal;
-
-    // Filtered totals
     const fExp = filteredTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + (t.amount || 0), 0);
     const fInc = filteredTransactions.filter(t => t.type !== 'expense').reduce((s, t) => s + (t.amount || 0), 0);
     const fNet = fInc - fExp;
-
-    // Section list from filtered
     const groupByDate = {};
     filteredTransactions.forEach((item) => {
       const d = item.date?.seconds ? new Date(item.date.seconds * 1000) : new Date(item.date);
@@ -122,43 +90,25 @@ const ListExpensesScreen = () => {
       groupByDate[dateStr].push(item);
     });
     const sectionData = Object.keys(groupByDate).map(title => ({ title, data: groupByDate[title] }));
-
-    return {
-      sections: sectionData,
-      totalExpense: expenseTotal,
-      totalIncome: incomeTotal,
-      netTotal: net,
-      isNetPositive: net >= 0,
-      filteredExpense: fExp,
-      filteredIncome: fInc,
-      filteredNet: fNet,
-      isFilteredNetPositive: fNet >= 0,
-    };
+    return { sections: sectionData, totalExpense: expenseTotal, totalIncome: incomeTotal, netTotal: net, isNetPositive: net >= 0, filteredExpense: fExp, filteredIncome: fInc, filteredNet: fNet, isFilteredNetPositive: fNet >= 0 };
   }, [allTransactions, filteredTransactions]);
 
   const isSearchActive = searchQuery.trim().length > 0;
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleDelete = async (item) => {
     try {
       const user = auth().currentUser;
       if (!user) return;
-      await firestore()
-        .collection("users").doc(user.uid)
-        .collection(item.type === "expense" ? "expenses" : "income")
-        .doc(item.id).delete();
-    } catch (error) {
-      console.log("Error deleting:", error);
-    }
+      await firestore().collection("users").doc(user.uid)
+        .collection(item.type === "expense" ? "expenses" : "income").doc(item.id).delete();
+    } catch (error) { console.log("Error deleting:", error); }
   };
 
   const renderRightActions = (item) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: '96%' }}>
       <TouchableOpacity style={styles.editContainer} onPress={() => {
-        setEditItem(item);
-        setEditAmount(String(item.amount));
-        setEditNote(item.note || "");
-        setEditSubcategory(item.subcategory || "");
+        setEditItem(item); setEditAmount(String(item.amount));
+        setEditNote(item.note || ""); setEditSubcategory(item.subcategory || "");
         setEditModalVisible(true);
       }}>
         <Icon name="create" size={20} color="#fff" />
@@ -175,78 +125,57 @@ const ListExpensesScreen = () => {
     try {
       const user = auth().currentUser;
       if (!user) return;
-      const ref = firestore()
-        .collection("users").doc(user.uid)
-        .collection(editItem.type === "expense" ? "expenses" : "income")
-        .doc(editItem.id);
+      const ref = firestore().collection("users").doc(user.uid)
+        .collection(editItem.type === "expense" ? "expenses" : "income").doc(editItem.id);
       const updateData = { amount: Number(editAmount), note: editNote };
       if (editItem.category === "Food") updateData.subcategory = editSubcategory;
       await ref.update(updateData);
-      setEditModalVisible(false);
-      setEditItem(null);
-    } catch (error) {
-      console.log("Error editing:", error);
-    }
+      setEditModalVisible(false); setEditItem(null);
+    } catch (error) { console.log("Error editing:", error); }
     setEditLoading(false);
   };
 
-  // ── Render item ───────────────────────────────────────────────────────────────
   const renderItem = ({ item }) => {
     let displayDate = "";
     if (item.date) {
-      const dateObj = item.date?.seconds
-        ? new Date(item.date.seconds * 1000)
-        : item.date instanceof Date ? item.date : new Date(item.date);
+      const dateObj = item.date?.seconds ? new Date(item.date.seconds * 1000) : item.date instanceof Date ? item.date : new Date(item.date);
       displayDate = moment(dateObj).format("h:mm a");
     }
-
-    // Highlight matching text helper
     const query = searchQuery.trim().toLowerCase();
+    const catLabel = item.subcategory ? `${item.category} - ${item.subcategory}` : item.category;
+    const isIncome = item.type !== "expense";
+    const amountColor = isIncome ? "#1DE9B6" : "#FF6B6B";
+
     const highlightText = (text) => {
       if (!text || !query || !isSearchActive) return <Text style={styles.category}>{text}</Text>;
-      const lower = text.toLowerCase();
-      const idx = lower.indexOf(query);
+      const lower = text.toLowerCase(); const idx = lower.indexOf(query);
       if (idx === -1) return <Text style={styles.category}>{text}</Text>;
       return (
         <Text style={styles.category}>
           {text.slice(0, idx)}
-          <Text style={[styles.category, { backgroundColor: (primaryColor || '#37474F') + '30', color: primaryColor || '#37474F', fontWeight: '700' }]}>
-            {text.slice(idx, idx + query.length)}
-          </Text>
+          <Text style={[styles.category, { backgroundColor: '#00C9A720', color: '#00C9A7', fontWeight: '700' }]}>{text.slice(idx, idx + query.length)}</Text>
           {text.slice(idx + query.length)}
         </Text>
       );
     };
 
-    const catLabel = item.subcategory ? `${item.category} - ${item.subcategory}` : item.category;
-
     return (
       <Swipeable renderRightActions={() => renderRightActions(item)}>
         <View style={styles.transactionCard}>
+          <LinearGradient
+            colors={isIncome ? ["rgba(29,233,182,0.12)", "rgba(29,233,182,0.04)"] : ["rgba(255,107,107,0.12)", "rgba(255,107,107,0.04)"]}
+            style={styles.txIconWrap}
+          >
+            <Icon name={isIncome ? "trending-up" : "trending-down"} size={RFValue(16)} color={amountColor} />
+          </LinearGradient>
           <View style={styles.leftContent}>
-            <View style={styles.iconWrapper}>
-              <Icon
-                name={item.type === "expense" ? "trending-down" : "trending-up"}
-                size={RFValue(18)}
-                color={item.type === "expense" ? "#FF3B30" : "#388E3C"}
-              />
-            </View>
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row' }}>
-                {isSearchActive
-                  ? highlightText(catLabel)
-                  : <Text style={styles.category}>{catLabel}</Text>
-                }
-              </View>
-              {item.note ? (
-                <Text style={styles.note} numberOfLines={1}>{item.note}</Text>
-              ) : null}
+              {isSearchActive ? highlightText(catLabel) : <Text style={styles.category}>{catLabel}</Text>}
+              {item.note ? <Text style={styles.note} numberOfLines={1}>{item.note}</Text> : null}
             </View>
           </View>
           <View style={{ alignItems: "flex-end" }}>
-            <Text style={[styles.amount, item.type === "expense" ? styles.expenseAmount : styles.incomeAmount]}>
-              {item.type === "expense" ? "-" : "+"}₹ {item.amount}
-            </Text>
+            <Text style={[styles.amount, { color: amountColor }]}>{isIncome ? "+" : "-"}₹ {item.amount}</Text>
             {showTime ? <Text style={styles.date}>{displayDate}</Text> : null}
           </View>
         </View>
@@ -256,9 +185,9 @@ const ListExpensesScreen = () => {
 
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#388E3C" />
-      </View>
+      <LinearGradient colors={['#050D1A', '#071828']} style={styles.loader}>
+        <ActivityIndicator size="large" color="#00C9A7" />
+      </LinearGradient>
     );
   }
 
@@ -266,70 +195,53 @@ const ListExpensesScreen = () => {
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 }}>
       {isSearchActive ? (
         <>
-          <Icon name="search-outline" size={60} color="#ddd" />
-          <Text style={{ marginTop: 16, fontSize: RFValue(15), color: '#999', fontWeight: '600' }}>
-            No results for "{searchQuery}"
-          </Text>
-          <Text style={{ marginTop: 6, fontSize: RFValue(12), color: '#bbb' }}>
-            Try searching by category or subcategory
-          </Text>
+          <Icon name="search-outline" size={60} color="rgba(255,255,255,0.12)" />
+          <Text style={{ marginTop: 16, fontSize: RFValue(15), color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>No results for "{searchQuery}"</Text>
+          <Text style={{ marginTop: 6, fontSize: RFValue(12), color: 'rgba(255,255,255,0.25)' }}>Try searching by category or subcategory</Text>
         </>
       ) : (
         <>
-          <Icon name="document-text-outline" size={80} color="#ccc" />
-          <Text style={{ marginTop: 20, fontSize: RFValue(16), color: '#999' }}>No transactions found</Text>
+          <Icon name="document-text-outline" size={80} color="rgba(255,255,255,0.1)" />
+          <Text style={{ marginTop: 20, fontSize: RFValue(16), color: 'rgba(255,255,255,0.35)' }}>No transactions found</Text>
         </>
       )}
     </View>
   );
 
-  // ── Search result summary bar (shown only when searching) ─────────────────────
   const SearchResultBar = () => {
     if (!isSearchActive) return null;
     const count = filteredTransactions.length;
     return (
       <View style={srb.wrap}>
         <View style={srb.left}>
-          <Icon name="filter" size={13} color={primaryColor || '#37474F'} />
-          <Text style={[srb.countText, { color: primaryColor || '#37474F' }]}>
-            {count} result{count !== 1 ? 's' : ''}
-          </Text>
+          <Icon name="filter" size={13} color="#00C9A7" />
+          <Text style={[srb.countText, { color: "#00C9A7" }]}>{count} result{count !== 1 ? 's' : ''}</Text>
           <Text style={srb.forText}>for </Text>
           <Text style={srb.queryText}>"{searchQuery}"</Text>
         </View>
-        <View style={srb.pills}>
-          {/* {filteredExpense > 0 && (
-            <View style={[srb.pill, { backgroundColor: '#FDEDEC' }]}>
-              <Icon name="remove-circle" size={10} color="#FF3B30" />
-              <Text style={[srb.pillText, { color: '#FF3B30' }]}>₹{filteredExpense.toLocaleString()}</Text>
-            </View>
-          )}
-          {filteredIncome > 0 && (
-            <View style={[srb.pill, { backgroundColor: '#E6F4EA' }]}>
-              <Icon name="add-circle" size={10} color="#388E3C" />
-              <Text style={[srb.pillText, { color: '#388E3C' }]}>₹{filteredIncome.toLocaleString()}</Text>
-            </View>
-          )} */}
-          {count > 0 && (
-            <View style={[srb.pill, { backgroundColor: isFilteredNetPositive ? '#E6F4EA' : '#FDEDEC' }]}>
-              <Text style={[srb.pillText, { color: isFilteredNetPositive ? '#388E3C' : '#FF3B30', fontWeight: '700' }]}>
-                Net {isFilteredNetPositive ? '+' : '-'}₹{Math.abs(filteredNet).toLocaleString()}
-              </Text>
-            </View>
-          )}
-        </View>
+        {count > 0 && (
+          <View style={[srb.pill, { backgroundColor: isFilteredNetPositive ? 'rgba(29,233,182,0.15)' : 'rgba(255,107,107,0.15)' }]}>
+            <Text style={[srb.pillText, { color: isFilteredNetPositive ? '#1DE9B6' : '#FF6B6B', fontWeight: '700' }]}>
+              Net {isFilteredNetPositive ? '+' : '-'}₹{Math.abs(filteredNet).toLocaleString()}
+            </Text>
+          </View>
+        )}
       </View>
     );
   };
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={['#050D1A', '#071828', '#0A2535']} style={StyleSheet.absoluteFill} />
+
       {/* Toast */}
       {showToast && (
         <Animated.View style={[styles.toastBox, { transform: [{ translateY: toastAnim }] }]}>
-          <View style={styles.toastInner}>
+          <LinearGradient colors={['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.06)']} style={styles.toastInner}>
+            <Icon name="swap-horizontal-outline" size={14} color="rgba(255,255,255,0.7)" style={{ marginRight: 6 }} />
             <Text style={styles.toastText}>Swipe left to edit or delete</Text>
-          </View>
+          </LinearGradient>
         </Animated.View>
       )}
 
@@ -338,41 +250,25 @@ const ListExpensesScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Edit Transaction</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={editAmount}
-              onChangeText={setEditAmount}
-              placeholder="Amount"
-            />
+            <TextInput style={styles.input} keyboardType="numeric" value={editAmount} onChangeText={setEditAmount} placeholder="Amount" placeholderTextColor="rgba(255,255,255,0.3)" />
             {editItem?.category === "Food" && (
               <View style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: RFValue(14), fontWeight: '500', marginBottom: 6 }}>Subcategory</Text>
-                <View style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 10, backgroundColor: '#fafafa' }}>
+                <Text style={{ fontSize: RFValue(13), fontWeight: '600', marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>Subcategory</Text>
+                <View style={{ borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderRadius: 14, overflow: 'hidden' }}>
                   {['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Drinks'].map((sub) => (
-                    <TouchableOpacity
-                      key={sub}
-                      style={{ padding: 10, backgroundColor: editSubcategory === sub ? '#388E3C' : 'transparent' }}
-                      onPress={() => setEditSubcategory(sub)}
-                    >
-                      <Text style={{ color: editSubcategory === sub ? '#fff' : '#222', fontWeight: '500' }}>{sub}</Text>
+                    <TouchableOpacity key={sub} style={{ padding: 12, backgroundColor: editSubcategory === sub ? '#00897B' : 'transparent' }} onPress={() => setEditSubcategory(sub)}>
+                      <Text style={{ color: editSubcategory === sub ? '#fff' : 'rgba(255,255,255,0.6)', fontWeight: '500' }}>{sub}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
             )}
-            <TextInput
-              style={[styles.input, { height: 40 }]}
-              value={editNote}
-              onChangeText={setEditNote}
-              placeholder="Note"
-              multiline
-            />
+            <TextInput style={[styles.input, { height: 40 }]} value={editNote} onChangeText={setEditNote} placeholder="Note" multiline placeholderTextColor="rgba(255,255,255,0.3)" />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalBtn} onPress={() => setEditModalVisible(false)} disabled={editLoading}>
                 <Text style={styles.modalBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#388E3C' }]} onPress={handleEditSave} disabled={editLoading}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#00897B' }]} onPress={handleEditSave} disabled={editLoading}>
                 <Text style={[styles.modalBtnText, { color: '#fff' }]}>{editLoading ? 'Saving...' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
@@ -380,46 +276,34 @@ const ListExpensesScreen = () => {
         </View>
       </Modal>
 
-      {/* ── Search bar ── */}
+      {/* Search bar */}
       <View style={search.wrapper}>
         <Animated.View style={[search.bar, { borderColor: searchBorderColor }]}>
-          <Icon
-            name="search"
-            size={17}
-            color={searchFocused ? (primaryColor || '#37474F') : '#AAAAAA'}
-            style={{ marginRight: 9 }}
-          />
+          <Icon name="search" size={17} color={searchFocused ? '#00C9A7' : 'rgba(255,255,255,0.25)'} style={{ marginRight: 9 }} />
           <TextInput
             ref={searchInputRef}
             style={search.input}
             placeholder="Search by category or subcategory…"
-            placeholderTextColor="#BBBBBB"
+            placeholderTextColor="rgba(255,255,255,0.25)"
             value={searchQuery}
             onChangeText={setSearchQuery}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
             returnKeyType="search"
-            clearButtonMode="never"
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => { setSearchQuery(""); searchInputRef.current?.blur(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <View style={[search.clearBtn, { backgroundColor: (primaryColor || '#37474F') + '18' }]}>
-                <Icon name="close" size={12} color={primaryColor || '#37474F'} />
+              <View style={search.clearBtn}>
+                <Icon name="close" size={12} color="#00C9A7" />
               </View>
             </TouchableOpacity>
           )}
         </Animated.View>
-
-        {/* Quick-filter chips */}
         {!searchFocused && searchQuery === "" && (
           <View style={search.chips}>
             {['Food', 'Petrol', 'Travel', 'Shopping', 'Bills'].map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={search.chip}
-                onPress={() => setSearchQuery(cat)}
-              >
+              <TouchableOpacity key={cat} style={search.chip} onPress={() => setSearchQuery(cat)}>
                 <Text style={search.chipText}>{cat}</Text>
               </TouchableOpacity>
             ))}
@@ -427,24 +311,12 @@ const ListExpensesScreen = () => {
         )}
       </View>
 
-      {/* Search result summary */}
       <SearchResultBar />
 
-      {/* Section list */}
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id + item.type}
         renderItem={renderItem}
-        // refreshControl={
-        //   <RefreshControl
-        //     refreshing={refreshing}
-        //     onRefresh={onRefresh}
-        //     tintColor="lightGrey"
-        //     title="Loading..."
-        //     colors={[primaryColor]}
-        //     progressBackgroundColor="lightGrey"
-        //   />
-        // }
         renderSectionHeader={({ section }) => {
           const { title, data } = section;
           const dayTotal = data.reduce((sum, item) => {
@@ -457,8 +329,8 @@ const ListExpensesScreen = () => {
               <TouchableOpacity style={styles.sectionHeader} onPress={() => setShowTime(!showTime)}>
                 <Text style={styles.sectionHeaderText}>{title}</Text>
               </TouchableOpacity>
-              <View style={[styles.sectionHeader, { alignItems: 'flex-end', borderRadius: 50, backgroundColor: isPositive ? '#E6F4EA' : '#FDEDEC' }]}>
-                <Text style={[styles.sectionHeaderText, { color: isPositive ? '#388E3C' : '#FF3B30' }]}>
+              <View style={[styles.sectionHeader, { alignItems: 'flex-end', borderRadius: 50, backgroundColor: isPositive ? 'rgba(29,233,182,0.15)' : 'rgba(255,107,107,0.15)' }]}>
+                <Text style={[styles.sectionHeaderText, { color: isPositive ? '#1DE9B6' : '#FF6B6B' }]}>
                   {isPositive ? '+' : '-'} ₹ {Math.abs(dayTotal)}
                 </Text>
               </View>
@@ -472,365 +344,79 @@ const ListExpensesScreen = () => {
       />
 
       {/* Summary bar */}
-      <View style={styles.summaryBar}>
-        <View style={[styles.summaryCard, { backgroundColor: "#FF3B30", marginRight: 6 }]}>
-          <Icon name="remove-circle" size={20} color="#fff" />
-          <View style={{ marginLeft: 6, flex: 1 }}>
-            <Text style={styles.summaryLabel} numberOfLines={1} ellipsizeMode="tail">Total Expense</Text>
-            <Text style={styles.summaryAmount} numberOfLines={1} ellipsizeMode="tail">₹ {totalExpense}</Text>
+      <LinearGradient colors={['rgba(5,13,26,0.95)', '#050D1A']} style={styles.summaryBar}>
+        {[
+          { label: "Total Out", amount: totalExpense, color: "#FF6B6B", icon: "remove-circle", bg: "rgba(255,107,107,0.15)" },
+          { label: "Total In",  amount: totalIncome,  color: "#1DE9B6", icon: "add-circle",    bg: "rgba(29,233,182,0.15)" },
+          { label: isNetPositive ? "Net In" : "Net Out", amount: Math.abs(netTotal), color: isNetPositive ? "#1DE9B6" : "#FF6B6B", icon: isNetPositive ? "trending-up" : "trending-down", bg: "rgba(255,255,255,0.06)" },
+        ].map((s) => (
+          <View key={s.label} style={[styles.summaryCard, { backgroundColor: s.bg }]}>
+            <Icon name={s.icon} size={18} color={s.color} />
+            <View style={{ marginLeft: 5, flex: 1 }}>
+              <Text style={styles.summaryLabel} numberOfLines={1}>{s.label}</Text>
+              <Text style={[styles.summaryAmount, { color: s.color }]} numberOfLines={1}>₹ {s.amount}</Text>
+            </View>
           </View>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: "#388E3C", marginRight: 6 }]}>
-          <Icon name="add-circle" size={20} color="#fff" />
-          <View style={{ marginLeft: 6, flex: 1 }}>
-            <Text style={styles.summaryLabel} numberOfLines={1} ellipsizeMode="tail">Total Income</Text>
-            <Text style={styles.summaryAmount} numberOfLines={1} ellipsizeMode="tail">₹ {totalIncome}</Text>
-          </View>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: "#fff", borderWidth: 1, borderColor: "#666666" }]}>
-          <Icon name={isNetPositive ? "add-circle" : "remove-circle"} size={20} color={isNetPositive ? "#388E3C" : "#FF3B30"} />
-          <View style={{ marginLeft: 6, flex: 1 }}>
-            <Text style={[styles.summaryLabel, { color: '#000' }]} numberOfLines={1} ellipsizeMode="tail">
-              Net {isNetPositive ? "Income" : "Expense"}
-            </Text>
-            <Text style={[styles.summaryAmount, { color: isNetPositive ? "#388E3C" : "#FF3B30" }]} numberOfLines={1} ellipsizeMode="tail">
-              {isNetPositive ? "+" : "-"}₹ {Math.abs(netTotal)}
-            </Text>
-          </View>
-        </View>
-      </View>
+        ))}
+      </LinearGradient>
     </View>
   );
 };
 
 export default ListExpensesScreen;
 
-// ── Search bar styles (isolated, won't affect originals) ─────────────────────────
 const search = StyleSheet.create({
-  wrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
-    backgroundColor: '#fafafa',
-  },
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  input: {
-    flex: 1,
-    fontSize: RFValue(13),
-    color: '#222',
-    padding: 0,
-    margin: 0,
-  },
-  clearBtn: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 10,
-    gap: 7,
-  },
-  chip: {
-    backgroundColor: '#F2F2F2',
-    borderRadius: 20,
-    paddingVertical: 5,
-    paddingHorizontal: 13,
-  },
-  chipText: {
-    fontSize: RFValue(11),
-    color: '#555',
-    fontWeight: '600',
-  },
+  wrapper: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  bar: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 11 },
+  input: { flex: 1, fontSize: RFValue(13), color: '#fff', padding: 0, margin: 0 },
+  clearBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,201,167,0.15)', alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 7 },
+  chip: { backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  chipText: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
 });
 
-// ── Search result bar styles ──────────────────────────────────────────────────────
 const srb = StyleSheet.create({
-  wrap: {
-    marginHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 2,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  left: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  countText: {
-    fontSize: RFValue(11),
-    fontWeight: '800',
-    marginLeft: 4,
-  },
-  forText: {
-    fontSize: RFValue(11),
-    color: '#999',
-  },
-  queryText: {
-    fontSize: RFValue(11),
-    color: '#444',
-    fontWeight: '700',
-    fontStyle: 'italic',
-  },
-  pills: {
-    flexDirection: 'row',
-    gap: 5,
-    flexWrap: 'wrap',
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderRadius: 20,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-  },
-  pillText: {
-    fontSize: RFValue(10),
-    fontWeight: '700',
-  },
+  wrap: { marginHorizontal: 16, marginTop: 6, marginBottom: 2, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, paddingVertical: 9, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  left: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  countText: { fontSize: RFValue(11), fontWeight: '800', marginLeft: 4 },
+  forText: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.35)' },
+  queryText: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontStyle: 'italic' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 },
+  pillText: { fontSize: RFValue(10) },
 });
 
-// ── Original styles (untouched) ──────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fafafa",
-  },
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  editContainer: {
-    backgroundColor: '#388E3C',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 14,
-    marginBottom: 12,
-    paddingHorizontal: 18,
-    marginRight: 4,
-    height: '90%',
-  },
-  deleteContainer: {
-    backgroundColor: "red",
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 14,
-    marginBottom: 12,
-    paddingHorizontal: 18,
-    height: '90%',
-  },
-  toastBox: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 32,
-    alignItems: 'center',
-    zIndex: 99,
-  },
-  toastInner: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 22,
-    paddingVertical: 10,
-    borderRadius: 22,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.13,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  toastText: {
-    color: '#222',
-    fontSize: RFValue(15),
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBox: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 24,
-    width: '85%',
-    elevation: 10,
-  },
-  modalTitle: {
-    fontSize: RFValue(18),
-    fontWeight: '700',
-    color: '#222',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 10,
-    fontSize: RFValue(15),
-    marginBottom: 12,
-    backgroundColor: '#fafafa',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 10,
-  },
-  modalBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#eee',
-    marginLeft: 10,
-  },
-  modalBtnText: {
-    fontSize: RFValue(15),
-    fontWeight: '600',
-    color: '#222',
-  },
-  deleteText: {
-    color: "#fff",
-    fontWeight: "500",
-    fontSize: RFValue(14),
-  },
-  sectionHeader: {
-    backgroundColor: "#F5F5F5",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginBottom: 10,
-    marginTop: 12,
-  },
-  sectionHeaderText: {
-    fontSize: RFValue(14),
-    fontWeight: "500",
-    color: "#222",
-  },
-  transactionCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "#fff",
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 12,
-    shadowColor: "grey",
-    shadowOpacity: 0.05,
-    shadowRadius: 50,
-    elevation: 3,
-    alignItems: "center",
-  },
-  leftContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  iconWrapper: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#f4f4f4",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  category: {
-    fontSize: RFValue(15),
-    fontWeight: "500",
-    color: "#222",
-  },
-  note: {
-    fontSize: RFValue(12),
-    color: "#666",
-    marginTop: 2,
-    maxWidth: Dimensions.get("window").width * 0.5,
-  },
-  date: {
-    fontSize: RFValue(11),
-    color: "#999",
-    marginTop: 2,
-  },
-  amount: {
-    fontSize: RFValue(15),
-    fontWeight: "500",
-  },
-  expenseAmount: {
-    color: "#FF3B30",
-  },
-  incomeAmount: {
-    color: "#388E3C",
-  },
-  summaryBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "#fff",
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderTopWidth: 1,
-    borderColor: "#eee",
-    elevation: 10,
-  },
-  summaryCard: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    justifyContent: "center",
-    minWidth: 0,
-    maxWidth: Dimensions.get("window").width / 3.2,
-  },
-  summaryLabel: {
-    color: "#fff",
-    fontSize: RFValue(12),
-    fontWeight: "500",
-  },
-  summaryAmount: {
-    color: "#fff",
-    fontSize: RFValue(13),
-    fontWeight: "500",
-    marginTop: 2,
-  },
+  container: { flex: 1, backgroundColor: '#050D1A' },
+  loader: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  editContainer: { backgroundColor: '#00897B', justifyContent: 'center', alignItems: 'center', borderRadius: 14, marginBottom: 12, paddingHorizontal: 18, marginRight: 4, height: '90%' },
+  deleteContainer: { backgroundColor: "#E53935", justifyContent: "center", alignItems: "center", borderRadius: 14, marginBottom: 12, paddingHorizontal: 18, height: '90%' },
+
+  toastBox: { position: 'absolute', left: 0, right: 0, bottom: 32, alignItems: 'center', zIndex: 99 },
+  toastInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  toastText: { color: 'rgba(255,255,255,0.8)', fontSize: RFValue(13), fontWeight: '600' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
+  modalBox: { backgroundColor: '#0D1F2D', borderRadius: 24, padding: 24, width: '85%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  modalTitle: { fontSize: RFValue(17), fontWeight: '800', color: '#fff', marginBottom: 16, textAlign: 'center' },
+  input: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: 12, fontSize: RFValue(14), marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10, gap: 10 },
+  modalBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)' },
+  modalBtnText: { fontSize: RFValue(14), fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
+
+  sectionHeader: { backgroundColor: 'rgba(255,255,255,0.06)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, marginBottom: 8, marginTop: 12 },
+  sectionHeaderText: { fontSize: RFValue(13), fontWeight: '600', color: 'rgba(255,255,255,0.6)' },
+
+  transactionCard: { flexDirection: "row", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.05)", padding: 14, borderRadius: 16, marginBottom: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.07)", alignItems: "center" },
+  txIconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  leftContent: { flexDirection: "row", alignItems: "center", flex: 1 },
+  category: { fontSize: RFValue(14), fontWeight: "600", color: "#fff" },
+  note: { fontSize: RFValue(11), color: "rgba(255,255,255,0.4)", marginTop: 2, maxWidth: Dimensions.get("window").width * 0.5 },
+  date: { fontSize: RFValue(11), color: "rgba(255,255,255,0.3)", marginTop: 2 },
+  amount: { fontSize: RFValue(14), fontWeight: "700" },
+
+  summaryBar: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", paddingVertical: 12, paddingHorizontal: 10, gap: 6, borderTopWidth: 1, borderColor: "rgba(255,255,255,0.07)" },
+  summaryCard: { flex: 1, flexDirection: "row", alignItems: "center", borderRadius: 14, paddingVertical: 10, paddingHorizontal: 8, justifyContent: "center", minWidth: 0, maxWidth: Dimensions.get("window").width / 3.2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  summaryLabel: { color: "rgba(255,255,255,0.5)", fontSize: RFValue(10), fontWeight: "600" },
+  summaryAmount: { fontSize: RFValue(12), fontWeight: "700", marginTop: 1 },
 });

@@ -1,3 +1,4 @@
+import { COLORS, SHADOW } from '../theme/theme';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -7,6 +8,9 @@ import {
   FlatList,
   ScrollView,
   Modal,
+  StatusBar,
+  Dimensions,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import LinearGradient from "react-native-linear-gradient";
@@ -20,30 +24,42 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
+  withRepeat,
+  withDelay,
+  interpolate,
+  Easing,
 } from "react-native-reanimated";
 import { useTransactions } from "../context/TransactionContext";
 import InteractiveCard from "../components/InteractiveCard";
 import LottieLoader from "../components/LottieLoader";
 
 const RUPEE = "\u20B9";
+const { width } = Dimensions.get("window");
+
+// ── Floating orb for background ambiance ─────────────────────────────────────
+const FloatingOrb = ({ size, color, delay, startX, startY }) => {
+  const y = useSharedValue(0);
+  const opacity = useSharedValue(0.5);
+  useEffect(() => {
+    y.value = withDelay(delay, withRepeat(withTiming(-18, { duration: 2800 + delay * 0.2, easing: Easing.inOut(Easing.sin) }), -1, true));
+    opacity.value = withDelay(delay, withRepeat(withTiming(0.15, { duration: 2400, easing: Easing.inOut(Easing.quad) }), -1, true));
+  }, []);
+  const orbStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }], opacity: opacity.value }));
+  return <Animated.View style={[orbStyle, { position: "absolute", width: size, height: size, borderRadius: size / 2, backgroundColor: color, left: startX, top: startY }]} />;
+};
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const {
-    expenses,
-    incomes,
-    loading,
-    error,
+    expenses, incomes, loading, error,
     primaryColor = "#37474F",
-    selectedMonth,
-    setSelectedMonth,
-    selectedYear,
-    setSelectedYear,
+    selectedMonth, setSelectedMonth,
+    selectedYear, setSelectedYear,
   } = useTransactions();
 
   const now = new Date();
   const balanceIntro = useSharedValue(0);
-
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [modalStep, setModalStep] = useState("month");
   const [tempMonth, setTempMonth] = useState(selectedMonth);
@@ -59,79 +75,43 @@ const HomeScreen = () => {
 
   const { balance, recent, todayIncome, todayExpense } = useMemo(() => {
     const today = new Date();
-
-    const inMonth = (arr) =>
-      arr.filter((t) => {
-        const d = toJSDate(t.date);
-        return d && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
-      });
-
-    const isToday = (d) =>
-      d &&
-      d.getDate() === today.getDate() &&
-      d.getMonth() === today.getMonth() &&
-      d.getFullYear() === today.getFullYear();
-
+    const inMonth = (arr) => arr.filter((t) => {
+      const d = toJSDate(t.date);
+      return d && d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+    });
+    const isToday = (d) => d && d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
     const monthExpenses = inMonth(expenses);
     const monthIncomes = inMonth(incomes);
-
     const totalExpense = monthExpenses.reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const totalIncome = monthIncomes.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-
-    const todaysExpense = monthExpenses
-      .filter((t) => isToday(toJSDate(t.date)))
-      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
-
-    const todaysIncome = monthIncomes
-      .filter((t) => isToday(toJSDate(t.date)))
-      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
-
-    const mergedRecent = [...monthExpenses, ...monthIncomes].sort((a, b) => {
-      const da = toJSDate(a.date) || 0;
-      const db = toJSDate(b.date) || 0;
-      return db - da;
-    });
-
-    return {
-      balance: totalIncome - totalExpense,
-      recent: mergedRecent.slice(0, 6),
-      todayIncome: todaysIncome,
-      todayExpense: todaysExpense,
-    };
+    const todaysExpense = monthExpenses.filter((t) => isToday(toJSDate(t.date))).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const todaysIncome = monthIncomes.filter((t) => isToday(toJSDate(t.date))).reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const mergedRecent = [...monthExpenses, ...monthIncomes].sort((a, b) => (toJSDate(b.date) || 0) - (toJSDate(a.date) || 0));
+    return { balance: totalIncome - totalExpense, recent: mergedRecent.slice(0, 6), todayIncome: todaysIncome, todayExpense: todaysExpense };
   }, [expenses, incomes, selectedMonth, selectedYear]);
 
   useEffect(() => {
     balanceIntro.value = 0;
     balanceIntro.value = withSpring(1, { damping: 15, stiffness: 145, mass: 0.4 });
-  }, [balance, selectedMonth, selectedYear, balanceIntro]);
+  }, [balance, selectedMonth, selectedYear]);
 
   const balanceCardAnimatedStyle = useAnimatedStyle(() => ({
     opacity: 0.72 + balanceIntro.value * 0.28,
-    transform: [
-      { translateY: (1 - balanceIntro.value) * 14 },
-      { scale: 0.986 + balanceIntro.value * 0.014 },
-    ],
+    transform: [{ translateY: (1 - balanceIntro.value) * 14 }, { scale: 0.986 + balanceIntro.value * 0.014 }],
   }));
 
   const formatAmount = (amt) => {
-    if (amt >= 1000) {
-      const val = amt % 1000 === 0 ? amt / 1000 : (amt / 1000).toFixed(1);
-      return `${val}k`;
-    }
+    if (amt >= 1000) { const val = amt % 1000 === 0 ? amt / 1000 : (amt / 1000).toFixed(1); return `${val}k`; }
     return amt;
   };
 
   const renderTx = ({ item, index }) => {
     const isIncome = item.type === "income";
     const d = toJSDate(item.date);
-    const amountColor = isIncome ? "#4CAF50" : "#F44336";
+    const amountColor = isIncome ? "#1DE9B6" : "#FF6B6B";
     const amountPrefix = isIncome ? "+" : "-";
-
     let dateStr = "";
-    if (d) {
-      const momentDate = require("moment")(d);
-      dateStr = `${momentDate.format("ddd")} ${momentDate.format("DD")}`;
-    }
+    if (d) { const m = require("moment")(d); dateStr = `${m.format("ddd")} ${m.format("DD")}`; }
 
     return (
       <Animated.View
@@ -140,35 +120,18 @@ const HomeScreen = () => {
       >
         <InteractiveCard style={styles.txCardWrap} pressScale={0.986}>
           <View style={styles.txItem}>
-            <View style={styles.txIconWrap}>
-              <Ionicons
-                name={isIncome ? "trending-up" : "trending-down"}
-                size={RFValue(18)}
-                color={amountColor}
-              />
-            </View>
-
+            <LinearGradient
+              colors={isIncome ? ["rgba(29,233,182,0.15)", "rgba(29,233,182,0.05)"] : ["rgba(255,107,107,0.15)", "rgba(255,107,107,0.05)"]}
+              style={styles.txIconWrap}
+            >
+              <Ionicons name={isIncome ? "trending-up" : "trending-down"} size={RFValue(16)} color={amountColor} />
+            </LinearGradient>
             <View style={{ flex: 1 }}>
-              <Text style={styles.txTitle} numberOfLines={1}>
-                {item.category || (isIncome ? "Income" : "Expense")}
-              </Text>
-              {!!item.note && (
-                <Text style={styles.txNote} numberOfLines={1}>
-                  {item.note}
-                </Text>
-              )}
-              <View style={styles.txDateRow}>
-                <Text style={styles.txDate}>{dateStr}</Text>
-                <Text style={styles.txDate}>
-                  , {d ? require("moment")(d).format("hh:mm A") : ""}
-                </Text>
-              </View>
+              <Text style={styles.txTitle} numberOfLines={1}>{item.category || (isIncome ? "Income" : "Expense")}</Text>
+              {!!item.note && <Text style={styles.txNote} numberOfLines={1}>{item.note}</Text>}
+              <Text style={styles.txDate}>{dateStr}{d ? `, ${require("moment")(d).format("hh:mm A")}` : ""}</Text>
             </View>
-
-            <Text style={[styles.txAmount, { color: amountColor }]}>
-              {amountPrefix}
-              {RUPEE} {item.amount ?? 0}
-            </Text>
+            <Text style={[styles.txAmount, { color: amountColor }]}>{amountPrefix}{RUPEE} {item.amount ?? 0}</Text>
           </View>
         </InteractiveCard>
       </Animated.View>
@@ -177,61 +140,45 @@ const HomeScreen = () => {
 
   if (error) {
     return (
-      <View style={styles.loader}>
-        <Ionicons
-          name="alert-circle-outline"
-          size={44}
-          color="#E53935"
-          style={{ marginBottom: 12 }}
-        />
-        <Text style={styles.errorTitle}>Error</Text>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
+      <LinearGradient colors={["#050D1A", "#071828", "#0A2535"]} style={styles.loader}>
+        <Ionicons name="alert-circle-outline" size={44} color="#FF6B6B" style={{ marginBottom: 12 }} />
+        <Text style={[styles.errorTitle, { color: "#FF6B6B" }]}>Error</Text>
+        <Text style={[styles.errorText, { color: "rgba(255,255,255,0.6)" }]}>{error}</Text>
+      </LinearGradient>
     );
   }
 
   if (loading) {
     return (
-      <View style={styles.loader}>
-        <LottieLoader
-          color={primaryColor}
-          title="Loading your dashboard"
-          subtitle="Preparing your latest income and expense snapshot."
-        />
-      </View>
+      <LinearGradient colors={["#050D1A", "#071828", "#0A2535"]} style={styles.loader}>
+        <LottieLoader color={primaryColor} title="Loading your dashboard" subtitle="Preparing your latest income and expense snapshot." />
+      </LinearGradient>
     );
   }
 
-  const monthNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
+  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const yearOptions = Array.from({ length: 11 }, (_, i) => now.getFullYear() - 2 + i);
+  const isPositive = balance >= 0;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={["top", "right", "left"]}>
-      <View style={styles.topWrap}>
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <LinearGradient colors={["#050D1A", "#071828", "#0A2535", "#062520"]} locations={[0, 0.35, 0.7, 1]} style={StyleSheet.absoluteFill} />
+
+      {/* Ambient orbs */}
+      <FloatingOrb size={180} color="#00695C" delay={0} startX={-60} startY={80} />
+      <FloatingOrb size={140} color="#1565C0" delay={600} startX={width - 80} startY={200} />
+      <FloatingOrb size={100} color="#00897B" delay={1200} startX={width * 0.4} startY={350} />
+
+      <SafeAreaView style={styles.safeArea} edges={["top", "right", "left"]}>
+
+        {/* ── Filter Modal ── */}
         <Modal visible={showFilterModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <TouchableOpacity
-                style={[styles.closeBtn, { backgroundColor: primaryColor }]}
-                onPress={() => setShowFilterModal(false)}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setShowFilterModal(false)}>
                 <Ionicons name="close" size={20} color="#fff" />
               </TouchableOpacity>
-
               {modalStep === "month" ? (
                 <>
                   <Text style={styles.modalTitle}>Select Month</Text>
@@ -239,28 +186,15 @@ const HomeScreen = () => {
                     {monthNames.map((name, idx) => (
                       <TouchableOpacity
                         key={name}
-                        style={[
-                          styles.optionChip,
-                          { backgroundColor: tempMonth === idx ? primaryColor : "#eee" },
-                        ]}
+                        style={[styles.optionChip, tempMonth === idx && styles.optionChipActive]}
                         onPress={() => setTempMonth(idx)}
                       >
-                        <Text
-                          style={{
-                            color: tempMonth === idx ? "#fff" : "#333",
-                            fontWeight: "700",
-                          }}
-                        >
-                          {name}
-                        </Text>
+                        <Text style={{ color: tempMonth === idx ? "#fff" : "rgba(255,255,255,0.6)", fontWeight: "700", fontSize: RFValue(12) }}>{name}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
-                  <TouchableOpacity
-                    style={[styles.modalPrimaryBtn, { backgroundColor: primaryColor }]}
-                    onPress={() => setModalStep("year")}
-                  >
-                    <Text style={styles.modalPrimaryBtnText}>Next: Select Year</Text>
+                  <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => setModalStep("year")}>
+                    <Text style={styles.modalPrimaryBtnText}>Next: Select Year →</Text>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -270,35 +204,18 @@ const HomeScreen = () => {
                     {yearOptions.map((yr) => (
                       <TouchableOpacity
                         key={yr}
-                        style={[
-                          styles.optionChip,
-                          { backgroundColor: tempYear === yr ? primaryColor : "#eee" },
-                        ]}
+                        style={[styles.optionChip, tempYear === yr && styles.optionChipActive]}
                         onPress={() => setTempYear(yr)}
                       >
-                        <Text
-                          style={{
-                            color: tempYear === yr ? "#fff" : "#333",
-                            fontWeight: "700",
-                          }}
-                        >
-                          {yr}
-                        </Text>
+                        <Text style={{ color: tempYear === yr ? "#fff" : "rgba(255,255,255,0.6)", fontWeight: "700", fontSize: RFValue(12) }}>{yr}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                   <View style={styles.modalActionsRow}>
                     <TouchableOpacity style={styles.modalBackBtn} onPress={() => setModalStep("month")}>
-                      <Text style={styles.modalBackText}>Back</Text>
+                      <Text style={styles.modalBackText}>← Back</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.modalApplyBtn, { backgroundColor: primaryColor }]}
-                      onPress={() => {
-                        setSelectedMonth(tempMonth);
-                        setSelectedYear(tempYear);
-                        setShowFilterModal(false);
-                      }}
-                    >
+                    <TouchableOpacity style={styles.modalApplyBtn} onPress={() => { setSelectedMonth(tempMonth); setSelectedYear(tempYear); setShowFilterModal(false); }}>
                       <Text style={styles.modalApplyText}>Apply</Text>
                     </TouchableOpacity>
                   </View>
@@ -308,306 +225,165 @@ const HomeScreen = () => {
           </View>
         </Modal>
 
-        <Animated.View style={balanceCardAnimatedStyle}>
-          <InteractiveCard style={{ borderRadius: 18 }} pressScale={0.985}>
-            <LinearGradient
-              colors={["#a6a6a6", "#f2f2f2", "#a6a6a6"]}
-              style={styles.balanceCard}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
+        {/* ── Balance Card ── */}
+        <View style={styles.topWrap}>
+          <Animated.View style={balanceCardAnimatedStyle}>
+            <LinearGradient colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)"]} style={styles.balanceCard}>
+              <View style={styles.balanceCardBorder} />
               <View style={styles.balanceHeadRow}>
                 <View>
-                  <Text style={styles.balanceTitle}>
-                    {monthNames[selectedMonth]} {selectedYear}
-                  </Text>
-                  <Text style={styles.balanceAmount}>
+                  <Text style={styles.balanceTitle}>{monthNames[selectedMonth]} {selectedYear}</Text>
+                  <Text style={[styles.balanceAmount, { color: isPositive ? "#1DE9B6" : "#FF6B6B" }]}>
                     {RUPEE} {balance}
                   </Text>
+                  <Text style={styles.balanceSubtitle}>{isPositive ? "Surplus this month" : "Deficit this month"}</Text>
                 </View>
                 <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setShowFilterModal(true);
-                    setModalStep("month");
-                    setTempMonth(selectedMonth);
-                    setTempYear(selectedYear);
-                  }}
+                  style={styles.filterBtn}
+                  onPress={() => { setShowFilterModal(true); setModalStep("month"); setTempMonth(selectedMonth); setTempYear(selectedYear); }}
                 >
-                  <Ionicons name="options-outline" size={22} color="#000" style={{ alignSelf: "center" }} />
+                  <Ionicons name="options-outline" size={20} color="rgba(255,255,255,0.7)" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.ieRow}>
-                <View style={[styles.iePillBox, styles.incomeBox]}>
-                  <Ionicons name="arrow-down" size={20} color="#fff" style={styles.pillIcon} />
-                  <Text style={styles.ieValue}>{formatAmount(todayIncome)}</Text>
-                </View>
-                <View style={[styles.iePillBox, styles.expenseBox]}>
-                  <Ionicons name="arrow-up" size={20} color="#fff" style={styles.pillIcon} />
-                  <Text style={styles.ieValue}>{formatAmount(todayExpense)}</Text>
-                </View>
+                <LinearGradient colors={["rgba(29,233,182,0.2)", "rgba(29,233,182,0.08)"]} style={styles.iePillBox}>
+                  <Ionicons name="arrow-down" size={16} color="#1DE9B6" style={styles.pillIcon} />
+                  <View>
+                    <Text style={styles.iePillLabel}>Today In</Text>
+                    <Text style={[styles.ieValue, { color: "#1DE9B6" }]}>{RUPEE} {formatAmount(todayIncome)}</Text>
+                  </View>
+                </LinearGradient>
+                <LinearGradient colors={["rgba(255,107,107,0.2)", "rgba(255,107,107,0.08)"]} style={styles.iePillBox}>
+                  <Ionicons name="arrow-up" size={16} color="#FF6B6B" style={styles.pillIcon} />
+                  <View>
+                    <Text style={styles.iePillLabel}>Today Out</Text>
+                    <Text style={[styles.ieValue, { color: "#FF6B6B" }]}>{RUPEE} {formatAmount(todayExpense)}</Text>
+                  </View>
+                </LinearGradient>
               </View>
             </LinearGradient>
-          </InteractiveCard>
-        </Animated.View>
-      </View>
-
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.actionsRow}>
-          <Animated.View style={styles.actionBtnWrap} entering={FadeInUp.duration(350).delay(60)}>
-            <InteractiveCard
-              style={[styles.actionBtn, { backgroundColor: primaryColor }]}
-              onPress={() => navigation.navigate("AddExpense", { initialTab: 1 })}
-            >
-              <Ionicons name="add-circle" size={22} color="#fff" />
-              <Text style={styles.actionText}>Cash In</Text>
-            </InteractiveCard>
-          </Animated.View>
-
-          <Animated.View style={styles.actionBtnWrap} entering={FadeInUp.duration(350).delay(130)}>
-            <InteractiveCard
-              style={[styles.actionBtn, { backgroundColor: primaryColor }]}
-              onPress={() => navigation.navigate("AddExpense", { initialTab: 0 })}
-            >
-              <Ionicons name="remove-circle" size={22} color="#fff" />
-              <Text style={styles.actionText}>Cash Out</Text>
-            </InteractiveCard>
-          </Animated.View>
-
-          <Animated.View style={styles.actionBtnWrap} entering={FadeInUp.duration(350).delay(200)}>
-            <InteractiveCard
-              style={[styles.actionBtn, { backgroundColor: primaryColor }]}
-              onPress={() => navigation.navigate("ListExpenses")}
-            >
-              <Ionicons name="list" size={22} color="#fff" />
-              <Text style={styles.actionText}>Expenses</Text>
-            </InteractiveCard>
           </Animated.View>
         </View>
 
-        <Text style={styles.sectionTitle}>Recent Transactions</Text>
-        {recent.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Ionicons name="file-tray-outline" size={22} color="#999" />
-            <Text style={styles.emptyText}>No transactions yet</Text>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+
+          {/* ── Action Buttons ── */}
+          <View style={styles.actionsRow}>
+            {[
+              { label: "Cash In",  icon: "add-circle",    screen: "AddExpense", params: { initialTab: 1 }, color: ["#00C9A7", "#00897B"] },
+              { label: "Cash Out", icon: "remove-circle", screen: "AddExpense", params: { initialTab: 0 }, color: ["#FF6B6B", "#E53935"] },
+              { label: "History",  icon: "list",          screen: "ListExpenses",params: {},              color: ["#5C9BFF", "#1565C0"] },
+            ].map((btn, i) => (
+              <Animated.View key={btn.label} style={styles.actionBtnWrap} entering={FadeInUp.duration(350).delay(60 + i * 70)}>
+                <InteractiveCard
+                  style={styles.actionBtnOuter}
+                  onPress={() => navigation.navigate(btn.screen, btn.params)}
+                >
+                  <LinearGradient colors={btn.color} style={styles.actionBtn}>
+                    <Ionicons name={btn.icon} size={20} color="#fff" />
+                    <Text style={styles.actionText}>{btn.label}</Text>
+                  </LinearGradient>
+                </InteractiveCard>
+              </Animated.View>
+            ))}
           </View>
-        ) : (
-          <FlatList
-            data={recent}
-            keyExtractor={(item) => item.id + item.type}
-            renderItem={renderTx}
-            scrollEnabled={false}
-            contentContainerStyle={{ paddingBottom: RFValue(20) }}
-          />
-        )}
-      </ScrollView>
-    </SafeAreaView>
+
+          {/* ── Recent Transactions ── */}
+          <Animated.View entering={FadeInDown.delay(150)}>
+            <Text style={styles.sectionTitle}>Recent Transactions</Text>
+          </Animated.View>
+
+          {recent.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Ionicons name="file-tray-outline" size={32} color="rgba(255,255,255,0.2)" />
+              <Text style={styles.emptyText}>No transactions yet</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={recent}
+              keyExtractor={(item) => item.id + item.type}
+              renderItem={renderTx}
+              scrollEnabled={false}
+              contentContainerStyle={{ paddingBottom: RFValue(20) }}
+            />
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 export default HomeScreen;
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F8F8F8" },
-  topWrap: { paddingHorizontal: 14, paddingTop: 14 },
-  container: { flex: 1, backgroundColor: "#F8F8F8", padding: 14 },
+  root: { flex: 1, backgroundColor: "#050D1A" },
+  safeArea: { flex: 1 },
+  topWrap: { paddingHorizontal: 16, paddingTop: 14 },
+  container: { flex: 1, padding: 16 },
   loader: { flex: 1, justifyContent: "center", alignItems: "center" },
+  errorTitle: { fontWeight: "700", fontSize: 18, marginBottom: 8 },
+  errorText: { fontSize: 15, textAlign: "center", maxWidth: 280 },
 
-  errorTitle: {
-    color: "#E53935",
-    fontWeight: "700",
-    fontSize: 18,
-    marginBottom: 8,
-  },
-  errorText: {
-    color: "#333",
-    fontSize: 15,
-    textAlign: "center",
-    maxWidth: 280,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.18)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 18,
-  },
-  modalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 22,
-    minWidth: 280,
-    width: "100%",
-    maxWidth: 370,
-    position: "relative",
-  },
-  closeBtn: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    borderRadius: 999,
-    padding: 3,
-    zIndex: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalTitle: {
-    fontWeight: "700",
-    fontSize: RFValue(16),
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  optionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  optionChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    margin: 4,
-  },
-  modalPrimaryBtn: {
-    marginTop: 18,
-    borderRadius: 8,
-    paddingVertical: 10,
-  },
-  modalPrimaryBtnText: { color: "#fff", fontWeight: "700", textAlign: "center" },
-  modalActionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 18,
-  },
-  modalBackBtn: {
-    backgroundColor: "#eee",
-    borderRadius: 8,
-    paddingVertical: 10,
-    flex: 1,
-    marginRight: 8,
-  },
-  modalBackText: { color: "#333", fontWeight: "700", textAlign: "center" },
-  modalApplyBtn: { borderRadius: 8, paddingVertical: 10, flex: 1 },
-  modalApplyText: { color: "#fff", fontWeight: "700", textAlign: "center" },
-
+  // Balance Card
   balanceCard: {
-    borderRadius: 18,
-    padding: 22,
-    marginBottom: 18,
-    shadowColor: "#FF9800",
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 8,
+    borderRadius: 24, padding: 22, marginBottom: 18,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
   },
-  balanceHeadRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  balanceTitle: {
-    color: "#404040",
-    fontSize: RFValue(15),
-    opacity: 0.95,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  balanceAmount: {
-    color: "#404040",
-    fontSize: RFValue(34),
-    fontWeight: "900",
-    marginTop: 8,
-    marginBottom: 8,
-    letterSpacing: 1.2,
-    textShadowColor: "rgba(0,0,0,0.12)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
+  balanceCardBorder: { position: "absolute", top: 0, left: 0, right: 0, height: 1, backgroundColor: "rgba(255,255,255,0.15)" },
+  balanceHeadRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  balanceTitle: { color: "rgba(255,255,255,0.5)", fontSize: RFValue(12), fontWeight: "600", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 },
+  balanceAmount: { fontSize: RFValue(36), fontWeight: "900", letterSpacing: 1 },
+  balanceSubtitle: { color: "rgba(255,255,255,0.35)", fontSize: RFValue(11), marginTop: 4 },
+  filterBtn: { backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
 
-  ieRow: {
-    flexDirection: "row",
-    marginTop: 16,
-    justifyContent: "space-between",
-  },
-  iePillBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 50,
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    marginHorizontal: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  incomeBox: { backgroundColor: "#43A047" },
-  expenseBox: { backgroundColor: "#E53935" },
-  pillIcon: { marginRight: 8 },
-  ieValue: { color: "#fff", fontSize: RFValue(15), fontWeight: "700" },
+  ieRow: { flexDirection: "row", marginTop: 20, gap: 12 },
+  iePillBox: { flex: 1, flexDirection: "row", alignItems: "center", borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  pillIcon: { marginRight: 10 },
+  iePillLabel: { color: "rgba(255,255,255,0.4)", fontSize: RFValue(10), fontWeight: "600", marginBottom: 2 },
+  ieValue: { fontSize: RFValue(14), fontWeight: "800" },
 
-  actionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  actionBtnWrap: { flex: 1, marginHorizontal: 4 },
-  actionBtn: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  actionText: {
-    color: "#fff",
-    fontSize: RFValue(14),
-    fontWeight: "500",
-    marginLeft: 6,
-  },
+  // Actions
+  actionsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 22, gap: 8 },
+  actionBtnWrap: { flex: 1 },
+  actionBtnOuter: { borderRadius: 16, overflow: "hidden" },
+  actionBtn: { borderRadius: 16, paddingVertical: 14, alignItems: "center", gap: 4 },
+  actionText: { color: "#fff", fontSize: RFValue(11), fontWeight: "700", marginTop: 2 },
 
-  sectionTitle: {
-    fontSize: RFValue(16.5),
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  txCardWrap: { borderRadius: 12, marginBottom: 10 },
+  // Section
+  sectionTitle: { fontSize: RFValue(16), fontWeight: "800", color: "#fff", marginBottom: 12, letterSpacing: 0.2 },
+
+  // Tx card
+  txCardWrap: { borderRadius: 16, marginBottom: 10 },
   txItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.07)",
   },
-  txIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f2f2f2",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  txTitle: { fontSize: RFValue(14), fontWeight: "600", color: "#222" },
-  txNote: { fontSize: RFValue(12), color: "#666", marginTop: 2 },
-  txDateRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  txDate: { fontSize: RFValue(11), color: "#999" },
-  txAmount: { fontSize: RFValue(14), fontWeight: "700", marginLeft: 8 },
+  txIconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", marginRight: 12 },
+  txTitle: { fontSize: RFValue(14), fontWeight: "700", color: "#fff" },
+  txNote: { fontSize: RFValue(11), color: "rgba(255,255,255,0.4)", marginTop: 2 },
+  txDate: { fontSize: RFValue(11), color: "rgba(255,255,255,0.3)", marginTop: 3 },
+  txAmount: { fontSize: RFValue(14), fontWeight: "800", marginLeft: 8 },
 
-  emptyBox: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-  },
-  emptyText: {
-    marginTop: 6,
-    color: "#777",
-    fontSize: RFValue(12),
-    fontWeight: "600",
-  },
+  emptyBox: { backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 16, padding: 28, alignItems: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  emptyText: { marginTop: 8, color: "rgba(255,255,255,0.3)", fontSize: RFValue(13), fontWeight: "600" },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", paddingHorizontal: 18 },
+  modalCard: { backgroundColor: "#0D1F2D", borderRadius: 24, padding: 22, width: "100%", maxWidth: 370, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", position: "relative" },
+  closeBtn: { position: "absolute", top: 14, right: 14, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 999, padding: 5, zIndex: 10 },
+  modalTitle: { fontWeight: "800", fontSize: RFValue(16), marginBottom: 16, textAlign: "center", color: "#fff" },
+  optionGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8 },
+  optionChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
+  optionChipActive: { backgroundColor: "#00897B", borderColor: "#00C9A7" },
+  modalPrimaryBtn: { marginTop: 20, borderRadius: 14, paddingVertical: 13, backgroundColor: "#00897B", alignItems: "center" },
+  modalPrimaryBtnText: { color: "#fff", fontWeight: "700", fontSize: RFValue(14) },
+  modalActionsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 20, gap: 10 },
+  modalBackBtn: { backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 14, paddingVertical: 13, flex: 1, alignItems: "center" },
+  modalBackText: { color: "rgba(255,255,255,0.7)", fontWeight: "700", fontSize: RFValue(13) },
+  modalApplyBtn: { borderRadius: 14, paddingVertical: 13, flex: 1, alignItems: "center", backgroundColor: "#00897B" },
+  modalApplyText: { color: "#fff", fontWeight: "700", fontSize: RFValue(13) },
 });
