@@ -82,17 +82,8 @@ const LoginScreen = (props) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Animated.View entering={FadeInUp.duration(350)} style={styles.heroWrap}>
-        <Animated.View style={[styles.heroOrb, pulseStyle]} />
-        <LottieView
-          source={require('../../assets/lottie/finance-loader.json')}
-          autoPlay
-          loop
-          style={styles.heroLottie}
-        />
         <Text style={styles.title}>Expense Tracker</Text>
         <Text style={styles.subtitle}>Sign in to continue</Text>
-      </Animated.View>
 
       <Animated.View entering={FadeInDown.duration(360).delay(80)} style={styles.formCard}>
         <View style={styles.inputContainer}>

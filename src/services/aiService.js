@@ -1,9 +1,13 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_KEY = 'AIzaSyCVC9rwPG62I_YTd8Tp5B3HcOYodTIWbcU';
+const getApiKey = async () => {
+  const key = await AsyncStorage.getItem('GEMINI_API_KEY');
+  return key;
+};
+
 
 export const getAIParsedExpense = async (text) => {
-  console.log("text2--->", API_KEY);
   try {
     const prompt = `
       You are a smart expense parser for a mobile app.
@@ -50,6 +54,10 @@ export const getAIParsedExpense = async (text) => {
       
       Return ONLY JSON. No explanation.
       `;
+    const API_KEY = await getApiKey();
+    if (!API_KEY) {
+      throw new Error('API key not found');
+    }
 
     const res = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${API_KEY}`,
@@ -64,8 +72,6 @@ export const getAIParsedExpense = async (text) => {
 
     const output =
       res.data.candidates[0].content.parts[0].text;
-
-    console.log("output--->", output);
 
     const jsonMatch = output.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -217,6 +223,10 @@ Rules:
 - headline should feel personal
 `;
 
+    const API_KEY = await getApiKey();
+    if (!API_KEY) {
+      throw new Error('API key not found');
+    }
     const res = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${API_KEY}`,
       { contents: [{ parts: [{ text: prompt }] }] }

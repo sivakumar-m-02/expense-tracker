@@ -86,17 +86,8 @@ export default function RegisterScreen({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Animated.View entering={FadeInUp.duration(350)} style={styles.heroWrap}>
-        <Animated.View style={[styles.heroOrb, pulseStyle]} />
-        <LottieView
-          source={require('../../assets/lottie/sparkle-pulse.json')}
-          autoPlay
-          loop
-          style={styles.heroLottie}
-        />
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>Sign up to start tracking your expenses</Text>
-      </Animated.View>
 
       <Animated.View entering={FadeInDown.duration(380).delay(70)} style={styles.formCard}>
         <View style={styles.inputContainer}>

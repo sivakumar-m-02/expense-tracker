@@ -197,10 +197,10 @@ const AIInputView = ({ onResult, onBack, onNotify }) => {
       <Animated.View entering={FadeInDown.duration(320).delay(80)} style={ai.tipsBox}>
         <Text style={ai.tipsTitle}>Try saying</Text>
         {[
-          'Spent 200 on dinner',
-          'Bike petrol 450',
+          'Spent 60 on dinner',
+          'Bike petrol 150',
           'Grocery shopping 1200',
-          'Electricity bill 800',
+          'Snacks for 62rs',
         ].map((tip) => (
           <TouchableOpacity key={tip} onPress={() => setPrompt(tip)}>
             <Text style={ai.tip}>"{tip}"</Text>

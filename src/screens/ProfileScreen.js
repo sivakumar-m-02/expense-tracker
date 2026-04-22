@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -17,6 +17,7 @@ import firestore from '@react-native-firebase/firestore';
 import { useTransactions } from '../context/TransactionContext';
 import AppPromptModal from '../components/AppPromptModal';
 import useAppModal from '../hooks/useAppModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const COLOR_OPTIONS = [
   { name: 'Blue', value: '#1976D2' },
@@ -38,6 +39,45 @@ const ProfileScreen = () => {
   const [budgetInput, setBudgetInput] = useState(budget ? String(budget) : '');
   const [saving, setSaving] = useState(false);
   const [colorModalVisible, setColorModalVisible] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [apiInput, setApiInput] = useState('');
+  const [adminModalVisible, setAdminModalVisible] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [apiModalVisible, setApiModalVisible] = useState(false);
+
+  useEffect(() => {
+    const loadKey = async () => {
+      const savedKey = await AsyncStorage.getItem('GEMINI_API_KEY');
+      if (savedKey) {
+        setApiKey(savedKey);
+        setApiInput(savedKey);
+      }
+    };
+    loadKey();
+  }, []);
+
+  const handleSaveApiKey = async () => {
+    if (adminPassword !== 'sk') {
+      showModal({
+        type: 'error',
+        title: 'Access Denied',
+        message: 'Invalid admin password',
+      });
+      return;
+    }
+
+    await AsyncStorage.setItem('GEMINI_API_KEY', apiInput);
+    setApiKey(apiInput);
+    setApiInput('');
+    setAdminPassword('');
+    setAdminModalVisible(false);
+
+    showModal({
+      type: 'success',
+      title: 'API Key Saved',
+      message: 'Your API key is stored securely.',
+    });
+  };
 
   const getInitials = (name) => {
     if (!name) return 'U';
@@ -106,9 +146,14 @@ const ProfileScreen = () => {
     <>
       <SafeAreaView style={styles.container} edges={["top", "right", "left"]}>
         <LinearGradient colors={[primaryColor, primaryColor]} style={styles.header}>
-          <View style={styles.avatar}>
+          <TouchableOpacity
+            style={styles.avatar}
+            onLongPress={() => {
+              setApiModalVisible(true);
+            }}
+          >
             <Text style={styles.avatarText}>{getInitials(user?.displayName || user?.email)}</Text>
-          </View>
+          </TouchableOpacity>
           <Text style={styles.userName}>{user?.displayName || 'No Name'}</Text>
           <Text style={styles.userEmail}>{user?.email || 'No email'}</Text>
         </LinearGradient>
@@ -127,7 +172,7 @@ const ProfileScreen = () => {
           <Icon name="wallet-outline" size={22} color={primaryColor} />
           {!editMode ? (
             <View style={styles.budgetRow}>
-              <Text style={styles.infoText}>Monthly Budget: \u20B9{budget || 0}</Text>
+              <Text style={styles.infoText}>Monthly Budget: {budget || 0}</Text>
               <TouchableOpacity
                 style={styles.iconBtn}
                 onPress={() => {
@@ -181,7 +226,7 @@ const ProfileScreen = () => {
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
 
-        <Modal visible={colorModalVisible} animationType="slide" transparent>
+        {colorModalVisible ? <Modal visible={colorModalVisible} animationType="slide" transparent>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
               <Text style={styles.modalTitle}>Choose Theme Color</Text>
@@ -200,7 +245,100 @@ const ProfileScreen = () => {
               </TouchableOpacity>
             </View>
           </View>
-        </Modal>
+        </Modal> : <></>}
+        {adminModalVisible ? <Modal visible={true} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Admin Verification</Text>
+              <TextInput
+                value={adminPassword}
+                onChangeText={setAdminPassword}
+                placeholder="Enter Admin Password"
+                secureTextEntry
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#ddd',
+                  borderRadius: 10,
+                  padding: 10,
+                  marginTop: 10,
+                }}
+              />
+              <TouchableOpacity
+                onPress={handleSaveApiKey}
+                style={{
+                  marginTop: 15,
+                  backgroundColor: primaryColor,
+                  padding: 12,
+                  borderRadius: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600' }}>Verify & Save</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setAdminModalVisible(false);
+                  setAdminPassword('');
+                }}
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#E53935', fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal> : <></>}
+        {apiModalVisible ? (
+          <Modal transparent animationType="fade">
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <Text style={styles.modalTitle}>Enter API Key</Text>
+                <TextInput
+                  value={apiInput}
+                  onChangeText={setApiInput}
+                  placeholder="Paste API Key"
+                  placeholderTextColor="#999"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#ddd',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginTop: 10,
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!apiInput) return;
+                    setApiModalVisible(false);
+                    setAdminModalVisible(true);
+                  }}
+                  style={{
+                    marginTop: 15,
+                    backgroundColor: primaryColor,
+                    padding: 12,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>
+                    Continue
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setApiModalVisible(false);
+                  }}
+                  style={{ marginTop: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#E53935' }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        ) : null}
       </SafeAreaView>
 
       <AppPromptModal {...modalProps} />
