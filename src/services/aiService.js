@@ -223,7 +223,7 @@ Rules:
 - headline should feel personal
 `;
 
-    const API_KEY = await getApiKey();
+    const API_KEY = await getApiKey() || "AIzaSyCmCb9oUgVjR_dPk5EOMLbWw7A0CIy3HRM";
     if (!API_KEY) {
       throw new Error('API key not found');
     }

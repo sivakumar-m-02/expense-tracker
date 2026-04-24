@@ -1,4 +1,3 @@
-import { COLORS, SHADOW } from '../theme/theme';
 import React, { useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, Dimensions,
@@ -102,7 +101,7 @@ export default function ReportScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
           {/* ── Header ── */}
-          <Animated.View entering={FadeInUp.duration(350)}>
+          <Animated.View entering={FadeInUp.duration(280)}>
             <View style={styles.headerRow}>
               <View>
                 <Text style={styles.header}>Monthly Trend</Text>
@@ -124,7 +123,7 @@ export default function ReportScreen() {
 
           {/* ── Summary cards ── */}
           <View style={styles.summaryRow}>
-            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(350).delay(70)}>
+            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(280).delay(50)}>
               <InteractiveCard style={styles.summaryCard}>
                 <LinearGradient colors={["rgba(29,233,182,0.2)", "rgba(29,233,182,0.05)"]} style={styles.summaryGrad}>
                   <Ionicons name="cash-outline" size={20} color="#1DE9B6" />
@@ -135,7 +134,7 @@ export default function ReportScreen() {
                 </LinearGradient>
               </InteractiveCard>
             </Animated.View>
-            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(350).delay(130)}>
+            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(280).delay(100)}>
               <InteractiveCard style={styles.summaryCard}>
                 <LinearGradient colors={["rgba(255,107,107,0.2)", "rgba(255,107,107,0.05)"]} style={styles.summaryGrad}>
                   <Ionicons name="card-outline" size={20} color="#FF6B6B" />
@@ -149,7 +148,7 @@ export default function ReportScreen() {
           </View>
 
           {/* ── Chart ── */}
-          <Animated.View entering={FadeInUp.duration(380).delay(170)}>
+          <Animated.View entering={FadeInUp.duration(300).delay(140)}>
             <InteractiveCard style={styles.cardBlock} pressScale={0.988}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>Daily (Income vs Expense)</Text>
@@ -222,11 +221,11 @@ export default function ReportScreen() {
             </InteractiveCard>
           </Animated.View>
 
-          <Animated.View entering={FadeInUp.duration(360).delay(220)}>
+          <Animated.View entering={FadeInUp.duration(300).delay(180)}>
             <BudgetProgress spent={Math.abs(net).toFixed(0)} budget={budget} primaryColor={primaryColor} />
           </Animated.View>
 
-          <Animated.View entering={FadeInUp.duration(360).delay(260)}>
+          <Animated.View entering={FadeInUp.duration(300).delay(220)}>
             <AISummaryCard
               currentMonthExpenses={monthExpenses}
               previousMonthExpenses={prevMonthExpenses}
@@ -245,7 +244,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#050D1A" },
   safe: { flex: 1 },
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: H_PADDING, paddingTop: 14, paddingBottom: 30 },
+  scrollContent: { paddingHorizontal: H_PADDING, paddingTop: 14, paddingBottom: 110 },
   center: { justifyContent: "center", alignItems: "center" },
 
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },

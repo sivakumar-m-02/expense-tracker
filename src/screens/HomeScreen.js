@@ -1,4 +1,3 @@
-import { COLORS, SHADOW } from '../theme/theme';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -37,13 +36,12 @@ import LottieLoader from "../components/LottieLoader";
 const RUPEE = "\u20B9";
 const { width } = Dimensions.get("window");
 
-// ── Floating orb for background ambiance ─────────────────────────────────────
 const FloatingOrb = ({ size, color, delay, startX, startY }) => {
   const y = useSharedValue(0);
-  const opacity = useSharedValue(0.5);
+  const opacity = useSharedValue(0.12);
   useEffect(() => {
-    y.value = withDelay(delay, withRepeat(withTiming(-18, { duration: 2800 + delay * 0.2, easing: Easing.inOut(Easing.sin) }), -1, true));
-    opacity.value = withDelay(delay, withRepeat(withTiming(0.15, { duration: 2400, easing: Easing.inOut(Easing.quad) }), -1, true));
+    y.value = withDelay(delay, withRepeat(withTiming(-14, { duration: 3200, easing: Easing.inOut(Easing.sin) }), -1, true));
+    opacity.value = withDelay(delay, withRepeat(withTiming(0.08, { duration: 3000, easing: Easing.inOut(Easing.quad) }), -1, true));
   }, []);
   const orbStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }], opacity: opacity.value }));
   return <Animated.View style={[orbStyle, { position: "absolute", width: size, height: size, borderRadius: size / 2, backgroundColor: color, left: startX, top: startY }]} />;
@@ -92,7 +90,7 @@ const HomeScreen = () => {
 
   useEffect(() => {
     balanceIntro.value = 0;
-    balanceIntro.value = withSpring(1, { damping: 15, stiffness: 145, mass: 0.4 });
+    balanceIntro.value = withSpring(1, { damping: 18, stiffness: 180, mass: 0.35 });
   }, [balance, selectedMonth, selectedYear]);
 
   const balanceCardAnimatedStyle = useAnimatedStyle(() => ({
@@ -115,8 +113,8 @@ const HomeScreen = () => {
 
     return (
       <Animated.View
-        entering={FadeInDown.duration(350).delay(Math.min(index * 55, 250))}
-        layout={Layout.springify().damping(16).stiffness(160)}
+        entering={FadeInDown.duration(280).delay(Math.min(index * 40, 160))}
+        layout={Layout.springify().damping(18).stiffness(180)}
       >
         <InteractiveCard style={styles.txCardWrap} pressScale={0.986}>
           <View style={styles.txItem}>
@@ -165,14 +163,12 @@ const HomeScreen = () => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <LinearGradient colors={["#050D1A", "#071828", "#0A2535", "#062520"]} locations={[0, 0.35, 0.7, 1]} style={StyleSheet.absoluteFill} />
 
-      {/* Ambient orbs */}
       <FloatingOrb size={180} color="#00695C" delay={0} startX={-60} startY={80} />
       <FloatingOrb size={140} color="#1565C0" delay={600} startX={width - 80} startY={200} />
       <FloatingOrb size={100} color="#00897B" delay={1200} startX={width * 0.4} startY={350} />
 
       <SafeAreaView style={styles.safeArea} edges={["top", "right", "left"]}>
 
-        {/* ── Filter Modal ── */}
         <Modal visible={showFilterModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
@@ -225,7 +221,6 @@ const HomeScreen = () => {
           </View>
         </Modal>
 
-        {/* ── Balance Card ── */}
         <View style={styles.topWrap}>
           <Animated.View style={balanceCardAnimatedStyle}>
             <LinearGradient colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)"]} style={styles.balanceCard}>
@@ -266,16 +261,19 @@ const HomeScreen = () => {
           </Animated.View>
         </View>
 
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
 
-          {/* ── Action Buttons ── */}
           <View style={styles.actionsRow}>
             {[
               { label: "Cash In",  icon: "add-circle",    screen: "AddExpense", params: { initialTab: 1 }, color: ["#00C9A7", "#00897B"] },
               { label: "Cash Out", icon: "remove-circle", screen: "AddExpense", params: { initialTab: 0 }, color: ["#FF6B6B", "#E53935"] },
               { label: "History",  icon: "list",          screen: "ListExpenses",params: {},              color: ["#5C9BFF", "#1565C0"] },
             ].map((btn, i) => (
-              <Animated.View key={btn.label} style={styles.actionBtnWrap} entering={FadeInUp.duration(350).delay(60 + i * 70)}>
+              <Animated.View key={btn.label} style={styles.actionBtnWrap} entering={FadeInUp.duration(280).delay(40 + i * 50)}>
                 <InteractiveCard
                   style={styles.actionBtnOuter}
                   onPress={() => navigation.navigate(btn.screen, btn.params)}
@@ -289,7 +287,6 @@ const HomeScreen = () => {
             ))}
           </View>
 
-          {/* ── Recent Transactions ── */}
           <Animated.View entering={FadeInDown.delay(150)}>
             <Text style={styles.sectionTitle}>Recent Transactions</Text>
           </Animated.View>
@@ -325,7 +322,6 @@ const styles = StyleSheet.create({
   errorTitle: { fontWeight: "700", fontSize: 18, marginBottom: 8 },
   errorText: { fontSize: 15, textAlign: "center", maxWidth: 280 },
 
-  // Balance Card
   balanceCard: {
     borderRadius: 24, padding: 22, marginBottom: 18,
     borderWidth: 1, borderColor: "rgba(255,255,255,0.1)",
@@ -344,17 +340,14 @@ const styles = StyleSheet.create({
   iePillLabel: { color: "rgba(255,255,255,0.4)", fontSize: RFValue(10), fontWeight: "600", marginBottom: 2 },
   ieValue: { fontSize: RFValue(14), fontWeight: "800" },
 
-  // Actions
   actionsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 22, gap: 8 },
   actionBtnWrap: { flex: 1 },
   actionBtnOuter: { borderRadius: 16, overflow: "hidden" },
   actionBtn: { borderRadius: 16, paddingVertical: 14, alignItems: "center", gap: 4 },
   actionText: { color: "#fff", fontSize: RFValue(11), fontWeight: "700", marginTop: 2 },
 
-  // Section
   sectionTitle: { fontSize: RFValue(16), fontWeight: "800", color: "#fff", marginBottom: 12, letterSpacing: 0.2 },
 
-  // Tx card
   txCardWrap: { borderRadius: 16, marginBottom: 10 },
   txItem: {
     flexDirection: "row", alignItems: "center",
@@ -371,7 +364,6 @@ const styles = StyleSheet.create({
   emptyBox: { backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 16, padding: 28, alignItems: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
   emptyText: { marginTop: 8, color: "rgba(255,255,255,0.3)", fontSize: RFValue(13), fontWeight: "600" },
 
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", paddingHorizontal: 18 },
   modalCard: { backgroundColor: "#0D1F2D", borderRadius: 24, padding: 22, width: "100%", maxWidth: 370, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", position: "relative" },
   closeBtn: { position: "absolute", top: 14, right: 14, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 999, padding: 5, zIndex: 10 },

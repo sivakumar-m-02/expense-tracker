@@ -1,4 +1,3 @@
-import { COLORS, SHADOW } from '../theme/theme';
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, Dimensions, StatusBar } from 'react-native';
@@ -36,7 +35,6 @@ const AddExpenseScreen = (screenProps) => {
     transform: [{ translateX: indicatorX.value }],
   }));
 
-  // ── All original logic preserved ─────────────────────────────────────────
   const addBreakfastExpense = async () => {
     try {
       const user = auth().currentUser;

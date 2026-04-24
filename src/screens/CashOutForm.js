@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, Modal, ActivityIndicator,
+  FlatList, Modal, ActivityIndicator, Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -31,8 +31,37 @@ const categories = [
 
 const ACCENT = '#FF6B6B';
 const ACCENT_DARK = '#E53935';
+const { width } = Dimensions.get('window');
 
-// ── Detail row for AI modal ───────────────────────────────────────────────────
+const GlassInput = ({ icon, placeholder, value, onChangeText, keyboardType, multiline, height }) => {
+  const borderAnim = useSharedValue(0);
+  const containerStyle = useAnimatedStyle(() => ({
+    borderColor: borderAnim.value === 1 ? ACCENT : 'rgba(255,255,255,0.1)',
+    shadowColor: ACCENT,
+    shadowOpacity: borderAnim.value * 0.28,
+    shadowRadius: 8,
+  }));
+
+  return (
+    <Animated.View style={[styles.inputWrapper, containerStyle, height ? { height, alignItems: 'flex-start' } : {}]}>
+      {icon && (
+        <Icon name={icon} size={18} color={borderAnim.value === 1 ? ACCENT : 'rgba(255,255,255,0.35)'} style={styles.inputIcon} />
+      )}
+      <TextInput
+        placeholder={placeholder}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        multiline={multiline}
+        onFocus={() => { borderAnim.value = withTiming(1, { duration: 200 }); }}
+        onBlur={() => { borderAnim.value = withTiming(0, { duration: 200 }); }}
+        placeholderTextColor="rgba(255,255,255,0.28)"
+        style={[styles.inputText, height ? { textAlignVertical: 'top', paddingTop: 4 } : {}]}
+      />
+    </Animated.View>
+  );
+};
+
 const DetailRow = ({ icon, label, value, highlight }) => (
   <View style={modal.row}>
     <View style={modal.rowLeft}>
@@ -43,7 +72,6 @@ const DetailRow = ({ icon, label, value, highlight }) => (
   </View>
 );
 
-// ── AI Confirm Modal ──────────────────────────────────────────────────────────
 const AIConfirmModal = ({ visible, parsed, onAdd, onCancel, saving }) => {
   if (!parsed) return null;
   const categoryIcon = categories.find((c) => c.label === parsed.category)?.icon || 'ellipsis-horizontal-outline';
@@ -81,7 +109,6 @@ const AIConfirmModal = ({ visible, parsed, onAdd, onCancel, saving }) => {
   );
 };
 
-// ── AI Input View ─────────────────────────────────────────────────────────────
 const AIInputView = ({ onResult, onBack, onNotify }) => {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -100,48 +127,97 @@ const AIInputView = ({ onResult, onBack, onNotify }) => {
   return (
     <Animated.View entering={FadeInUp.duration(280)} style={ai.container}>
       <TouchableOpacity style={ai.backBtn} onPress={onBack}>
-        <Icon name="arrow-back-outline" size={18} color={ACCENT} />
-        <Text style={ai.backText}>Manual</Text>
-      </TouchableOpacity>
-      <Animated.View entering={FadeInDown.duration(300).delay(40)} style={ai.card}>
-        <View style={ai.sparkleRow}>
-          <LottieView source={require('../assets/lottie/sparkle-pulse.json')} autoPlay loop style={ai.sparkleLottie} />
-          <Icon name="sparkles" size={20} color={ACCENT} />
-          <Text style={ai.cardTitle}>Describe your expense</Text>
-        </View>
-        <Text style={ai.hint}>Example: had lunch for 120 or bike petrol 500</Text>
-        <TextInput
-          style={ai.textArea}
-          placeholder="Type here..."
-          placeholderTextColor="rgba(255,255,255,0.25)"
-          value={prompt}
-          onChangeText={setPrompt}
-          multiline
-          autoFocus
-        />
-        <TouchableOpacity
-          style={[ai.submitBtn, (!prompt.trim() || loading) && ai.submitBtnDisabled]}
-          onPress={handleSubmit}
-          disabled={!prompt.trim() || loading}
+        <LinearGradient
+          colors={['rgba(255,107,107,0.15)', 'rgba(255,107,107,0.05)']}
+          style={ai.backBtnGrad}
         >
-          {loading ? <ActivityIndicator color="#fff" size="small" /> : (
-            <><Icon name="send" size={16} color="#fff" style={{ marginRight: 6 }} /><Text style={ai.submitText}>Parse with AI</Text></>
-          )}
-        </TouchableOpacity>
-      </Animated.View>
-      <Animated.View entering={FadeInDown.duration(320).delay(80)} style={ai.tipsBox}>
-        <Text style={ai.tipsTitle}>Try saying</Text>
-        {['Spent 60 on dinner', 'Bike petrol 150', 'Grocery shopping 1200', 'Snacks for 62rs'].map((tip) => (
-          <TouchableOpacity key={tip} onPress={() => setPrompt(tip)}>
-            <Text style={ai.tip}>"{tip}"</Text>
+          <Icon name="arrow-back-outline" size={16} color={ACCENT} />
+        </LinearGradient>
+        <Text style={ai.backText}>Manual Entry</Text>
+      </TouchableOpacity>
+
+      <Animated.View entering={FadeInDown.duration(300).delay(40)} style={ai.card}>
+        <LinearGradient colors={['rgba(255,107,107,0.14)', 'rgba(255,107,107,0.04)']} style={ai.cardHeader}>
+          <View style={ai.sparkleRow}>
+            <View style={ai.iconBadge}>
+              <LottieView source={require('../assets/lottie/sparkle-pulse.json')} autoPlay loop style={ai.sparkleLottie} />
+              <Icon name="sparkles" size={18} color={ACCENT} />
+            </View>
+            <View>
+              <Text style={ai.cardTitle}>AI Expense Parser</Text>
+              <Text style={ai.hint}>Describe your expense in plain language</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={{ padding: 16 }}>
+          <GlassInput
+            placeholder="e.g. had lunch for 120, bike petrol 500..."
+            value={prompt}
+            onChangeText={setPrompt}
+            multiline
+            height={90}
+          />
+          <TouchableOpacity
+            style={[ai.submitBtn, (!prompt.trim() || loading) && ai.submitBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={!prompt.trim() || loading}
+            activeOpacity={0.82}
+          >
+            {loading ? <ActivityIndicator color="#fff" size="small" /> : (
+              <>
+                <Icon name="send" size={16} color="#fff" style={{ marginRight: 7 }} />
+                <Text style={ai.submitText}>Parse with AI</Text>
+              </>
+            )}
           </TouchableOpacity>
-        ))}
+        </View>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.duration(320).delay(80)} style={ai.tipsBox}>
+        <Text style={ai.tipsTitle}>Quick Tries</Text>
+        <View style={ai.tipsGrid}>
+          {['Spent 60 on dinner', 'Bike petrol 150', 'Grocery shopping 1200', 'Snacks for 62rs'].map((tip) => (
+            <TouchableOpacity key={tip} onPress={() => setPrompt(tip)} style={ai.tipChip}>
+              <Icon name="flash-outline" size={11} color={ACCENT} style={{ marginRight: 4 }} />
+              <Text style={ai.tipText}>{tip}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </Animated.View>
     </Animated.View>
   );
 };
 
-// ── Main CashOutForm ──────────────────────────────────────────────────────────
+const ShimmerSaveButton = ({ onPress, pulse }) => {
+  const shimmer = useSharedValue(-1);
+  useEffect(() => {
+    shimmer.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.linear }), -1, false);
+  }, []);
+  const shimmerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: (shimmer.value + 1) * width * 0.5 - 80 }],
+  }));
+  const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+
+  return (
+    <Animated.View style={pulseStyle}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.88}>
+        <LinearGradient
+          colors={[ACCENT, ACCENT_DARK, '#A01010']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          style={styles.saveButton}
+        >
+          <View style={StyleSheet.absoluteFill} pointerEvents="none" overflow="hidden">
+            <Animated.View style={[shimmerStyle, styles.shimmerBar]} />
+          </View>
+          <Icon name="checkmark-circle" size={20} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={styles.saveButtonText}>Save Expense</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 const CashOutForm = () => {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(categories[0].label);
@@ -160,12 +236,17 @@ const CashOutForm = () => {
   const addPulse = useSharedValue(1);
 
   useEffect(() => {
-    aiPulse.value = withRepeat(withSequence(withTiming(1.04, { duration: 900, easing: Easing.out(Easing.cubic) }), withTiming(1, { duration: 900, easing: Easing.inOut(Easing.cubic) })), -1, false);
-    addPulse.value = withRepeat(withSequence(withTiming(1.06, { duration: 900, easing: Easing.out(Easing.cubic) }), withTiming(1, { duration: 900, easing: Easing.inOut(Easing.cubic) })), -1, false);
+    aiPulse.value = withRepeat(withSequence(
+      withTiming(1.04, { duration: 1000, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.cubic) })
+    ), -1, false);
+    addPulse.value = withRepeat(withSequence(
+      withTiming(1.04, { duration: 1000, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.cubic) })
+    ), -1, false);
   }, []);
 
   const aiPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: aiPulse.value }] }));
-  const addPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: addPulse.value }] }));
 
   const saveExpense = async ({ amount: amt, category: cat, subcategory: sub, note: userNote, expenseDate }) => {
     const user = auth().currentUser;
@@ -177,10 +258,15 @@ const CashOutForm = () => {
     return true;
   };
 
-  const resetManualForm = () => { setAmount(''); setCategory(categories[0].label); setSubcategory(''); setNote(''); setDate(new Date()); };
+  const resetManualForm = () => {
+    setAmount(''); setCategory(categories[0].label); setSubcategory(''); setNote(''); setDate(new Date());
+  };
 
   const handleSave = async () => {
-    if (!amount || isNaN(amount)) { showPrompt({ type: 'warning', title: 'Validation Error', message: 'Please enter a valid amount.' }); return; }
+    if (!amount || isNaN(amount)) {
+      showPrompt({ type: 'warning', title: 'Validation Error', message: 'Please enter a valid amount.' });
+      return;
+    }
     try {
       const ok = await saveExpense({ amount, category, subcategory, note, expenseDate: date });
       if (ok) { resetManualForm(); showPrompt({ type: 'success', title: 'Success', message: 'Expense added successfully!' }); }
@@ -192,8 +278,14 @@ const CashOutForm = () => {
   const handleAIAdd = async () => {
     setSaving(true);
     try {
-      const ok = await saveExpense({ amount: parsedExpense.amount, category: parsedExpense.category, subcategory: parsedExpense.subcategory, note: parsedExpense.note, expenseDate: new Date() });
-      if (ok) { setShowModal(false); setParsedExpense(null); setAiMode(false); showPrompt({ type: 'success', title: 'Success', message: 'Expense added successfully!' }); }
+      const ok = await saveExpense({
+        amount: parsedExpense.amount, category: parsedExpense.category,
+        subcategory: parsedExpense.subcategory, note: parsedExpense.note, expenseDate: new Date(),
+      });
+      if (ok) {
+        setShowModal(false); setParsedExpense(null); setAiMode(false);
+        showPrompt({ type: 'success', title: 'Success', message: 'Expense added successfully!' });
+      }
     } catch { showPrompt({ type: 'error', title: 'Error', message: 'Failed to save expense.' }); }
     finally { setSaving(false); }
   };
@@ -202,7 +294,13 @@ const CashOutForm = () => {
     return (
       <>
         <AIInputView onResult={handleAIResult} onBack={() => setAiMode(false)} onNotify={showPrompt} />
-        <AIConfirmModal visible={showModal} parsed={parsedExpense} onAdd={handleAIAdd} onCancel={() => { setShowModal(false); setParsedExpense(null); }} saving={saving} />
+        <AIConfirmModal
+          visible={showModal}
+          parsed={parsedExpense}
+          onAdd={handleAIAdd}
+          onCancel={() => { setShowModal(false); setParsedExpense(null); }}
+          saving={saving}
+        />
         <AppPromptModal {...modalProps} />
       </>
     );
@@ -212,82 +310,103 @@ const CashOutForm = () => {
     <>
       <KeyboardAwareScrollView
         style={{ width: '100%' }}
-        contentContainerStyle={[styles.container, { paddingBottom: 40, alignItems: 'center' }]}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, paddingTop: 8 }}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
+        showsVerticalScrollIndicator={false}
         enableOnAndroid
         enableAutomaticScroll
         extraScrollHeight={40}
         keyboardOpeningTime={0}
       >
-        {/* Header row */}
-        <Animated.View entering={FadeInUp.duration(280)} style={styles.addBtn}>
-          <View style={{ justifyContent: 'center', alignItems: 'center', paddingHorizontal: 18 }}>
-            <View style={styles.titleRow}>
-              <LottieView source={require('../assets/lottie/sparkle-pulse.json')} autoPlay loop style={styles.titleSparkle} />
-              <Text style={[styles.label, { fontSize: RFValue(17), marginTop: 0, marginBottom: 0, color: '#fff' }]}>Cash Out</Text>
+        <Animated.View entering={FadeInUp.duration(280)} style={styles.sectionHeader}>
+          <LinearGradient
+            colors={['rgba(255,107,107,0.12)', 'rgba(255,107,107,0.04)']}
+            style={styles.sectionHeaderGrad}
+          >
+            <LottieView
+              source={require('../assets/lottie/sparkle-pulse.json')}
+              autoPlay loop
+              style={styles.headerLottie}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Cash Out</Text>
+              <Text style={styles.sectionSubtitle}>Track your spending</Text>
             </View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Animated.View style={aiPulseStyle}>
-              <InteractiveCard style={styles.aiToggleBtn} onPress={() => setAiMode(true)} pressScale={0.95}>
-                <Icon name="sparkles" size={14} color={ACCENT} />
-                <Text style={styles.aiToggleText}>AI</Text>
+              <InteractiveCard
+                style={styles.aiToggleBtn}
+                onPress={() => setAiMode(true)}
+                pressScale={0.94}
+              >
+                <LinearGradient
+                  colors={['rgba(255,107,107,0.25)', 'rgba(255,107,107,0.08)']}
+                  style={styles.aiToggleGrad}
+                >
+                  <Icon name="sparkles" size={14} color={ACCENT} />
+                  <Text style={styles.aiToggleText}>AI</Text>
+                </LinearGradient>
               </InteractiveCard>
             </Animated.View>
-            <Animated.View style={addPulseStyle}>
-              <InteractiveCard style={styles.fab} onPress={handleSave} pressScale={0.9}>
-                <Icon name="add" size={20} color="#fff" />
-              </InteractiveCard>
-            </Animated.View>
-          </View>
+          </LinearGradient>
         </Animated.View>
 
-        {/* Form card */}
-        <Animated.View entering={FadeInDown.duration(320).delay(50)} style={styles.inputCard}>
+        <Animated.View entering={FadeInDown.duration(300).delay(60)} style={styles.card}>
+          <View style={styles.cardTopBar} />
 
-          {/* Amount */}
-          <Text style={styles.label}>Amount</Text>
-          <View style={styles.amountRow}>
-            <Icon name="cash-outline" size={22} color={ACCENT} />
-            <TextInput style={styles.input} placeholder="Enter amount" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholderTextColor="rgba(255,255,255,0.25)" />
-          </View>
+          <Text style={styles.fieldLabel}>
+            <Icon name="cash-outline" size={13} color={ACCENT} />{'  '}Amount
+          </Text>
+          <GlassInput
+            icon="logo-usd"
+            placeholder="0.00"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="numeric"
+          />
 
-          {/* Category */}
-          <Text style={styles.label}>Category</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
+            <Icon name="grid-outline" size={13} color={ACCENT} />{'  '}Category
+          </Text>
           <FlatList
             data={categories}
             keyExtractor={(item) => item.label}
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.categoryRow}
-            contentContainerStyle={styles.categoryRowContent}
+            style={{ marginTop: 8 }}
             renderItem={({ item: cat, index }) => (
-              <Animated.View entering={FadeInUp.duration(250).delay(index * 35)} layout={Layout.springify().damping(16).stiffness(170)}>
+              <Animated.View
+                entering={FadeInUp.duration(240).delay(index * 40)}
+                layout={Layout.springify().damping(16).stiffness(170)}
+              >
                 <TouchableOpacity
                   style={[styles.categoryBtn, category === cat.label && styles.categoryBtnActive]}
                   onPress={() => { setCategory(cat.label); setSubcategory(''); }}
+                  activeOpacity={0.78}
                 >
-                  <Icon name={cat.icon} size={18} color={category === cat.label ? '#fff' : ACCENT} />
-                  <Text style={[styles.categoryText, category === cat.label && { color: '#fff' }]}>{cat.label}</Text>
+                  <Icon name={cat.icon} size={16} color={category === cat.label ? '#fff' : ACCENT} />
+                  <Text style={[styles.catText, category === cat.label && { color: '#fff' }]}>
+                    {cat.label}
+                  </Text>
                 </TouchableOpacity>
               </Animated.View>
             )}
           />
 
-          {/* Subcategory */}
           {(() => {
             const selectedCat = categories.find((cat) => cat.label === category);
             if (!selectedCat?.subcategories) return null;
             return (
-              <View style={styles.subcategoryRow}>
+              <View style={styles.subcategoryWrap}>
                 {selectedCat.subcategories.map((sub) => (
                   <Animated.View key={sub} layout={Layout.springify().damping(17).stiffness(180)}>
                     <TouchableOpacity
                       style={[styles.subcategoryBtn, subcategory === sub && styles.subcategoryBtnActive]}
                       onPress={() => setSubcategory(sub)}
+                      activeOpacity={0.78}
                     >
-                      <Text style={[styles.subcategoryText, subcategory === sub && { color: '#fff' }]}>{sub}</Text>
+                      <Text style={[styles.subcategoryText, subcategory === sub && { color: '#fff' }]}>
+                        {sub}
+                      </Text>
                     </TouchableOpacity>
                   </Animated.View>
                 ))}
@@ -295,29 +414,61 @@ const CashOutForm = () => {
             );
           })()}
 
-          {/* Date & Time */}
-          <Text style={styles.label}>Date & Time</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
+            <Icon name="calendar-outline" size={13} color={ACCENT} />{'  '}Date & Time
+          </Text>
+          <View style={styles.dateTimeRow}>
             <InteractiveCard style={styles.dateBtn} onPress={() => setShowDatePicker(true)} pressScale={0.97}>
-              <Icon name="calendar-outline" size={18} color={ACCENT} />
+              <Icon name="calendar-outline" size={16} color={ACCENT} />
               <Text style={styles.dateText}>{date.toDateString()}</Text>
             </InteractiveCard>
-            <InteractiveCard style={[styles.dateBtn, { marginLeft: 8 }]} onPress={() => setShowTimePicker(true)} pressScale={0.97}>
-              <Icon name="time-outline" size={18} color={ACCENT} />
-              <Text style={styles.dateText}>{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+            <InteractiveCard style={styles.dateBtn} onPress={() => setShowTimePicker(true)} pressScale={0.97}>
+              <Icon name="time-outline" size={16} color={ACCENT} />
+              <Text style={styles.dateText}>
+                {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
             </InteractiveCard>
           </View>
 
           {showDatePicker && (
-            <DateTimePicker value={date} mode="date" display="default" onChange={(event, selectedDate) => { setShowDatePicker(false); if (selectedDate) { const nd = new Date(selectedDate); nd.setHours(date.getHours()); nd.setMinutes(date.getMinutes()); setDate(nd); } }} />
+            <DateTimePicker value={date} mode="date" display="default"
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) {
+                  const nd = new Date(selectedDate);
+                  nd.setHours(date.getHours()); nd.setMinutes(date.getMinutes());
+                  setDate(nd);
+                }
+              }}
+            />
           )}
           {showTimePicker && (
-            <DateTimePicker value={date} mode="time" display="default" onChange={(event, selectedTime) => { setShowTimePicker(false); if (selectedTime) { const nd = new Date(date); nd.setHours(selectedTime.getHours()); nd.setMinutes(selectedTime.getMinutes()); setDate(nd); } }} />
+            <DateTimePicker value={date} mode="time" display="default"
+              onChange={(event, selectedTime) => {
+                setShowTimePicker(false);
+                if (selectedTime) {
+                  const nd = new Date(date);
+                  nd.setHours(selectedTime.getHours()); nd.setMinutes(selectedTime.getMinutes());
+                  setDate(nd);
+                }
+              }}
+            />
           )}
 
-          {/* Note */}
-          <Text style={styles.label}>Note</Text>
-          <TextInput style={[styles.input, { height: 60, flex: 0, marginLeft: 0 }]} placeholder="Add a note (optional)" value={note} onChangeText={setNote} multiline placeholderTextColor="rgba(255,255,255,0.25)" />
+          <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
+            <Icon name="create-outline" size={13} color={ACCENT} />{'  '}Note
+          </Text>
+          <GlassInput
+            placeholder="Add a note (optional)"
+            value={note}
+            onChangeText={setNote}
+            multiline
+            height={64}
+          />
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.duration(320).delay(180)}>
+          <ShimmerSaveButton onPress={handleSave} pulse={addPulse} />
         </Animated.View>
       </KeyboardAwareScrollView>
       <AppPromptModal {...modalProps} />
@@ -326,77 +477,161 @@ const CashOutForm = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: 'transparent' },
-  inputCard: { width: '100%', borderRadius: 20, padding: 18, paddingTop: 0 },
-  label: { fontSize: RFValue(13), color: 'rgba(255,255,255,0.6)', marginTop: 16, marginBottom: 8, fontWeight: '700', letterSpacing: 0.3 },
-  input: {
-    backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 14, paddingVertical: 12, fontSize: RFValue(13), color: '#fff', marginLeft: 10, flex: 1,
+  sectionHeader: { marginBottom: 14 },
+  sectionHeaderGrad: {
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 18, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.22)',
   },
-  amountRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  categoryRow: { marginVertical: 8 },
-  categoryRowContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2 },
+  headerLottie: { width: 40, height: 40, marginRight: 12 },
+  sectionTitle: { fontSize: RFValue(17), fontWeight: '800', color: '#fff' },
+  sectionSubtitle: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.4)', marginTop: 2 },
+
+  aiToggleBtn: { borderRadius: 14, overflow: 'hidden' },
+  aiToggleGrad: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 9, paddingHorizontal: 13,
+    borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.35)',
+    borderRadius: 14,
+    gap: 5,
+  },
+  aiToggleText: { fontSize: RFValue(12), color: ACCENT, fontWeight: '800' },
+
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+    padding: 18,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  cardTopBar: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+    backgroundColor: 'rgba(255,107,107,0.22)',
+  },
+
+  fieldLabel: {
+    fontSize: RFValue(12),
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+
+  inputWrapper: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  inputIcon: { marginRight: 10 },
+  inputText: { flex: 1, fontSize: RFValue(14), color: '#fff', padding: 0 },
+
   categoryBtn: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,107,107,0.08)',
-    borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14, marginHorizontal: 4,
-    borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,107,107,0.07)',
+    borderRadius: 20, paddingVertical: 9, paddingHorizontal: 14, marginRight: 8,
+    borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.25)',
   },
-  categoryBtnActive: { backgroundColor: ACCENT, borderColor: ACCENT },
-  categoryText: { marginLeft: 6, fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
-  dateBtn: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,107,107,0.08)',
-    borderRadius: 14, paddingVertical: 10, paddingHorizontal: 14, marginVertical: 8,
-    borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',
-  },
-  dateText: { marginLeft: 8, fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
-  fab: {
-    backgroundColor: ACCENT, width: 44, height: 44, borderRadius: 22,
-    alignItems: 'center', justifyContent: 'center', elevation: 4, marginRight: 10,
-  },
-  subcategoryRow: { flexDirection: 'row', justifyContent: 'center', marginVertical: 8, flexWrap: 'wrap' },
+  categoryBtnActive: { backgroundColor: ACCENT_DARK, borderColor: ACCENT },
+  catText: { marginLeft: 7, fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
+
+  subcategoryWrap: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 8 },
   subcategoryBtn: {
-    backgroundColor: 'rgba(255,107,107,0.06)', borderRadius: 16, paddingVertical: 7, paddingHorizontal: 14,
-    marginHorizontal: 4, marginVertical: 4, borderWidth: 1, borderColor: 'rgba(255,107,107,0.25)',
+    backgroundColor: 'rgba(255,107,107,0.06)',
+    borderRadius: 16, paddingVertical: 8, paddingHorizontal: 14,
+    borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.22)',
   },
-  subcategoryBtnActive: { backgroundColor: ACCENT, borderColor: ACCENT },
+  subcategoryBtnActive: { backgroundColor: ACCENT_DARK, borderColor: ACCENT },
   subcategoryText: { fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
-  addBtn: { width: '100%', justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  titleRow: { flexDirection: 'row', alignItems: 'center' },
-  titleSparkle: { width: 22, height: 22, marginRight: 6 },
-  aiToggleBtn: {
-    flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.4)',
-    borderRadius: 20, paddingVertical: 8, paddingHorizontal: 14, marginRight: 10, backgroundColor: 'rgba(255,107,107,0.08)',
+
+  dateTimeRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  dateBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,107,107,0.07)',
+    borderRadius: 14, paddingVertical: 12, paddingHorizontal: 12,
+    borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.22)',
+    gap: 8,
   },
-  aiToggleText: { marginLeft: 5, fontSize: RFValue(12), color: ACCENT, fontWeight: '700' },
+  dateText: { fontSize: RFValue(12), color: ACCENT, fontWeight: '600', flex: 1 },
+
+  saveButton: {
+    height: 56, borderRadius: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  saveButtonText: { color: '#fff', fontSize: RFValue(15), fontWeight: '800', letterSpacing: 0.4 },
+  shimmerBar: {
+    position: 'absolute', width: 70, height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    transform: [{ skewX: '-20deg' }],
+  },
 });
 
 const ai = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'transparent', paddingHorizontal: 18, paddingTop: 16 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  backText: { marginLeft: 6, fontSize: RFValue(13), color: ACCENT, fontWeight: '600' },
-  card: { backgroundColor: 'rgba(255,107,107,0.07)', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)' },
-  sparkleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  sparkleLottie: { width: 22, height: 22, marginRight: 4 },
-  cardTitle: { fontSize: RFValue(15), fontWeight: '700', color: '#fff', marginLeft: 8 },
-  hint: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.35)', marginBottom: 14 },
-  textArea: {
-    backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    padding: 14, fontSize: RFValue(13), color: '#fff', minHeight: 80, textAlignVertical: 'top', marginBottom: 16,
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, gap: 10 },
+  backBtnGrad: {
+    width: 34, height: 34, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.3)',
   },
-  submitBtn: { backgroundColor: ACCENT, borderRadius: 14, paddingVertical: 13, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
-  submitBtnDisabled: { backgroundColor: 'rgba(255,107,107,0.3)' },
+  backText: { fontSize: RFValue(14), color: ACCENT, fontWeight: '700' },
+
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 22, borderWidth: 1,
+    borderColor: 'rgba(255,107,107,0.2)',
+    overflow: 'hidden', marginBottom: 16,
+  },
+  cardHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,107,107,0.12)' },
+  sparkleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  iconBadge: {
+    width: 44, height: 44, borderRadius: 14,
+    backgroundColor: 'rgba(255,107,107,0.12)',
+    borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.28)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sparkleLottie: { position: 'absolute', width: 56, height: 56, opacity: 0.55 },
+  cardTitle: { fontSize: RFValue(15), fontWeight: '800', color: '#fff' },
+  hint: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.38)', marginTop: 3 },
+
+  submitBtn: {
+    backgroundColor: ACCENT_DARK, borderRadius: 14,
+    paddingVertical: 14, alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'center', marginTop: 14,
+  },
+  submitBtnDisabled: { backgroundColor: 'rgba(255,107,107,0.25)' },
   submitText: { color: '#fff', fontSize: RFValue(13), fontWeight: '700' },
-  tipsBox: { marginTop: 20, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  tipsTitle: { fontSize: RFValue(12), fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: 10 },
-  tip: { fontSize: RFValue(12), color: ACCENT, marginBottom: 8, fontStyle: 'italic' },
+
+  tipsBox: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 18, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  },
+  tipsTitle: {
+    fontSize: RFValue(11), fontWeight: '800',
+    color: 'rgba(255,255,255,0.4)', marginBottom: 12,
+    textTransform: 'uppercase', letterSpacing: 0.6,
+  },
+  tipsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tipChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,107,107,0.08)',
+    borderRadius: 20, paddingVertical: 7, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)',
+  },
+  tipText: { fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
 });
 
 const modal = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   card: { width: '100%', backgroundColor: '#0D1F2D', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   header: { paddingVertical: 22, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(255,107,107,0.15)' },
-  iconCircle: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(255,107,107,0.1)', borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.3)', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  iconLottie: { position: 'absolute', width: 60, height: 60, opacity: 0.6 },
+  iconCircle: { width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,107,107,0.1)', borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.3)', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  iconLottie: { position: 'absolute', width: 64, height: 64, opacity: 0.55 },
   title: { fontSize: RFValue(16), fontWeight: '800', color: '#fff' },
   subtitle: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.4)', marginTop: 3 },
   detailsBox: { padding: 20 },
@@ -408,7 +643,7 @@ const modal = StyleSheet.create({
   actions: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
   cancelBtn: { flex: 1, paddingVertical: 16, alignItems: 'center', borderRightWidth: 0.5, borderRightColor: 'rgba(255,255,255,0.08)' },
   cancelText: { fontSize: RFValue(13), color: 'rgba(255,255,255,0.4)', fontWeight: '600' },
-  addBtn: { flex: 1, paddingVertical: 16, alignItems: 'center', backgroundColor: ACCENT, flexDirection: 'row', justifyContent: 'center' },
+  addBtn: { flex: 1, paddingVertical: 16, alignItems: 'center', backgroundColor: ACCENT_DARK, flexDirection: 'row', justifyContent: 'center' },
   addText: { fontSize: RFValue(13), color: '#fff', fontWeight: '700', marginLeft: 6 },
 });
 

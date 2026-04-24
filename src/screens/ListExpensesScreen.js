@@ -1,4 +1,3 @@
-import { COLORS, SHADOW } from '../theme/theme';
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import {
   View, Text, SectionList, StyleSheet, ActivityIndicator,
@@ -13,11 +12,11 @@ import auth from "@react-native-firebase/auth";
 import moment from "moment";
 import LinearGradient from "react-native-linear-gradient";
 import { StatusBar } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const ListExpensesScreen = () => {
   const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions } = useTransactions();
 
-  // ── Toast ─────────────────────────────────────────────────────────────────────
   const [showToast, setShowToast] = useState(true);
   const toastAnim = useRef(new Animated.Value(80)).current;
   useEffect(() => {
@@ -26,7 +25,6 @@ const ListExpensesScreen = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // ── Edit modal ────────────────────────────────────────────────────────────────
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [editAmount, setEditAmount] = useState("");
@@ -35,11 +33,11 @@ const ListExpensesScreen = () => {
   const [editLoading, setEditLoading] = useState(false);
   const [showTime, setShowTime] = useState(true);
 
-  // ── Search ────────────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const searchInputRef = useRef(null);
   const searchBarAnim = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     Animated.timing(searchBarAnim, { toValue: searchFocused ? 1 : 0, duration: 200, useNativeDriver: false }).start();
@@ -50,7 +48,6 @@ const ListExpensesScreen = () => {
     outputRange: ['rgba(255,255,255,0.1)', '#00C9A7'],
   });
 
-  // ── Transactions ──────────────────────────────────────────────────────────────
   const { allTransactions, loading } = useMemo(() => {
     const filterMonth = (arr) => arr.filter((t) => {
       const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
@@ -245,7 +242,6 @@ const ListExpensesScreen = () => {
         </Animated.View>
       )}
 
-      {/* Edit Modal */}
       <Modal visible={editModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -277,7 +273,7 @@ const ListExpensesScreen = () => {
       </Modal>
 
       {/* Search bar */}
-      <View style={search.wrapper}>
+      <View style={[search.wrapper, { paddingTop: insets.top + 60 }]}>
         <Animated.View style={[search.bar, { borderColor: searchBorderColor }]}>
           <Icon name="search" size={17} color={searchFocused ? '#00C9A7' : 'rgba(255,255,255,0.25)'} style={{ marginRight: 9 }} />
           <TextInput
@@ -338,7 +334,7 @@ const ListExpensesScreen = () => {
           );
         }}
         ListEmptyComponent={renderEmpty}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80, flexGrow: 1, paddingTop: 5.5 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, flexGrow: 1, paddingTop: 5.5 }}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
       />
@@ -366,7 +362,7 @@ const ListExpensesScreen = () => {
 export default ListExpensesScreen;
 
 const search = StyleSheet.create({
-  wrapper: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  wrapper: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 4 },
   bar: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 11 },
   input: { flex: 1, fontSize: RFValue(13), color: '#fff', padding: 0, margin: 0 },
   clearBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,201,167,0.15)', alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
