@@ -73,8 +73,8 @@ const TemplateA = ({ summary, primaryColor, expanded, setExpanded }) => {
         style={{ marginBottom: 14 }}
         contentContainerStyle={{ paddingRight: 8, gap: 8 }}
       >
-        <InsightChip icon="cash-outline" label="Total Spent" value={`₹${(summary.totalSpent || 0).toLocaleString()}`} color="rgba(255,255,255,0.7)" />
-        <InsightChip icon="flame-outline" label="Top Category" value={`${summary.topCategory} (${summary.topCategoryPercent}%)`} color={primaryColor} />
+        <InsightChip icon="cash-outline" label="Total Spent" value={`₹${(summary.totalSpent || 0).toLocaleString()}`} color={vsBadgeColor} />
+        <InsightChip icon="flame-outline" label="Top Category" value={`${summary.topCategory} (${summary.topCategoryPercent}%)`} color={vsBadgeColor} />
         <InsightChip icon={vsIcon} label="vs Last Month" value={summary.vsLastMonth || '—'} color={vsBadgeColor} />
         <InsightChip icon="sunny-outline" label="Peak Day" value={`${summary.peakDay} · ₹${(summary.peakDayAmount || 0).toLocaleString()}`} color="#FFB300" />
       </ScrollView>

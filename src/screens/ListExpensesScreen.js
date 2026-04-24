@@ -259,7 +259,7 @@ const ListExpensesScreen = () => {
                 </View>
               </View>
             )}
-            <TextInput style={[styles.input, { height: 40 }]} value={editNote} onChangeText={setEditNote} placeholder="Note" multiline placeholderTextColor="rgba(255,255,255,0.3)" />
+            <TextInput style={[styles.input]} value={editNote} onChangeText={setEditNote} placeholder="Note" multiline placeholderTextColor="rgba(255,255,255,0.3)" />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalBtn} onPress={() => setEditModalVisible(false)} disabled={editLoading}>
                 <Text style={styles.modalBtnText}>Cancel</Text>

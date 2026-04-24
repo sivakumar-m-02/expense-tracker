@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   TextInput, Modal, FlatList, StatusBar, Dimensions, Platform,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
@@ -17,6 +18,9 @@ import Animated, {
   FadeInDown, FadeInUp,
   useSharedValue, useAnimatedStyle, withRepeat, withTiming, withDelay, Easing, interpolate,
 } from 'react-native-reanimated';
+import { Image } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
+import axios from 'axios';
 
 const { width } = Dimensions.get('window');
 
@@ -57,6 +61,8 @@ const ProfileScreen = () => {
   const [adminModalVisible, setAdminModalVisible] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [apiModalVisible, setApiModalVisible] = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
 
   // Avatar pulse
   const pulse = useSharedValue(1);
@@ -64,6 +70,100 @@ const ProfileScreen = () => {
     pulse.value = withRepeat(withTiming(1.06, { duration: 2000, easing: Easing.inOut(Easing.sin) }), -1, true);
   }, []);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) return;
+  
+      const doc = await firestore().collection('users').doc(user.uid).get();
+      if (doc.exists && doc.data()?.profileImage) {
+        setProfileImage(doc.data().profileImage);
+      }
+    };
+  
+    fetchProfile();
+  }, []);
+
+  const uploadImageToCloudinary = async (uri) => {
+    if (!user) return;
+  
+    try {
+      setSaving(true);
+  
+      const cleanUri = uri.startsWith('file://') ? uri : `file://${uri}`;
+  
+      const formData = new FormData();
+  
+      formData.append('file', {
+        uri: cleanUri,
+        type: 'image/jpeg',
+        name: 'profile.jpg',
+      });
+  
+      formData.append('upload_preset', 'profile_upload'); // 🔴 CHANGE THIS
+      // NO API SECRET HERE ❌
+  
+      const response = await axios.post(
+        'https://api.cloudinary.com/v1_1/dnenbkpqg/image/upload', // 🔴 CHANGE THIS
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        }
+      );
+
+      console.log("response---", response);
+  
+      const imageUrl = response.data.secure_url;
+  
+      // Save in Firestore (same as your existing logic)
+      await firestore().collection('users').doc(user.uid).set(
+        { profileImage: imageUrl },
+        { merge: true }
+      );
+  
+      setProfileImage(imageUrl);
+  
+      showModal({
+        type: 'success',
+        title: 'Updated',
+        message: 'Profile image updated successfully',
+      });
+  
+    } catch (error) {
+      console.log('CLOUDINARY ERROR:', error?.response?.data || error);
+  
+      showModal({
+        type: 'error',
+        title: 'Upload Failed',
+        message: 'Cloudinary upload failed',
+      });
+    }
+  
+    setSaving(false);
+  };
+
+  const handlePickImage = async () => {
+    launchImageLibrary(
+      { mediaType: 'photo', quality: 0.5 },
+      async (response) => {
+        if (response.didCancel) return;
+  
+        if (response.errorCode) {
+          showModal({
+            type: 'error',
+            title: 'Error',
+            message: 'Image picker failed',
+          });
+          return;
+        }
+  
+        const asset = response.assets[0];
+        const uri = asset.uri;
+  
+        await uploadImageToCloudinary(uri);
+      }
+    );
+  };
 
   useEffect(() => {
     const loadKey = async () => {
@@ -130,11 +230,23 @@ const ProfileScreen = () => {
           {/* ── Header hero ── */}
           <Animated.View entering={FadeInUp.springify()} style={styles.hero}>
             <LinearGradient colors={['rgba(0,201,167,0.15)', 'rgba(0,201,167,0.03)']} style={styles.heroBg}>
-              <TouchableOpacity onLongPress={() => setApiModalVisible(true)} activeOpacity={0.9}>
+              <TouchableOpacity
+                onPress={handlePickImage}
+                onLongPress={() => {
+                  if (profileImage) setPreviewVisible(true);
+                }}
+                activeOpacity={0.9}
+              >
                 <Animated.View style={[styles.avatarRing, pulseStyle]}>
-                  <LinearGradient colors={['#00C9A7', '#00695C']} style={styles.avatar}>
-                    <Text style={styles.avatarText}>{getInitials(user?.displayName || user?.email)}</Text>
-                  </LinearGradient>
+                  {profileImage ? (
+                    <Image source={{ uri: profileImage }} style={styles.avatar} />
+                  ) : (
+                    <LinearGradient colors={['#00C9A7', '#00695C']} style={styles.avatar}>
+                      <Text style={styles.avatarText}>
+                        {getInitials(user?.displayName || user?.email)}
+                      </Text>
+                    </LinearGradient>
+                  )}
                 </Animated.View>
               </TouchableOpacity>
               <Text style={styles.userName}>{user?.displayName || 'No Name'}</Text>
@@ -151,10 +263,11 @@ const ProfileScreen = () => {
 
           {/* ── Info Cards ── */}
           <View style={styles.cardsWrap}>
-
+          <TouchableOpacity onLongPress={() => setApiModalVisible(true)}>
             <InfoCard icon="person-outline" delay={80}>
               <Text style={styles.infoText}>{user?.displayName || 'Not set'}</Text>
             </InfoCard>
+            </TouchableOpacity>
 
             <InfoCard icon="mail-outline" delay={140}>
               <Text style={styles.infoText} numberOfLines={1}>{user?.email || 'Not available'}</Text>
@@ -253,6 +366,20 @@ const ProfileScreen = () => {
                 </TouchableOpacity>
               </View>
             </View>
+          </Modal>
+        )}
+
+        {previewVisible && (
+          <Modal transparent animationType="fade">
+            <TouchableWithoutFeedback onPress={() => setPreviewVisible(false)}>
+              <View style={styles.previewContainer}>
+                <Image
+                  source={{ uri: profileImage }}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </TouchableWithoutFeedback>
           </Modal>
         )}
 
@@ -355,6 +482,17 @@ const styles = StyleSheet.create({
   colorCircle: { width: 30, height: 30, borderRadius: 10, marginRight: 10, alignItems: 'center', justifyContent: 'center' },
   colorName: { fontSize: RFValue(12), fontWeight: '600', color: 'rgba(255,255,255,0.7)' },
   modalClose: { marginTop: 16, backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 12, borderRadius: 14, alignItems: 'center' },
+  previewContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  previewImage: {
+    width: '100%',
+    height: '80%',
+  },
 });
 
 export default ProfileScreen;

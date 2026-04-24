@@ -89,7 +89,7 @@ function BottomTabs() {
           borderTopWidth: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: 78 + insets.bottom,
+          height: 83 + insets.bottom,
           position: "absolute",
         },
         tabBarBackground: () => (
@@ -113,7 +113,7 @@ function BottomTabs() {
               fontSize: 11,
               fontWeight: focused ? "700" : "500",
               color: focused ? "#00C9A7" : "rgba(255,255,255,0.32)",
-              marginTop: 1,
+              marginTop: 5,
               letterSpacing: 0.2,
             }}
           >
@@ -121,7 +121,7 @@ function BottomTabs() {
           </Text>
         ),
         tabBarItemStyle: {
-          paddingTop: 16,
+          paddingTop: 22,
           paddingBottom: insets.bottom > 0 ? 0 : 6,
         },
       })}
