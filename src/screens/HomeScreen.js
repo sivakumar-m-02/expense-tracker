@@ -190,7 +190,7 @@ const HomeScreen = () => {
                     ))}
                   </View>
                   <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => setModalStep("year")}>
-                    <Text style={styles.modalPrimaryBtnText}>Next: Select Year →</Text>
+                    <Text style={styles.modalPrimaryBtnText}>Select Year →</Text>
                   </TouchableOpacity>
                 </>
               ) : (

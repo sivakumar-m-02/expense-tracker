@@ -19,6 +19,7 @@ import ProfileScreen from "../screens/ProfileScreen.js";
 import ReportScreen from "../screens/ReportScreen.js";
 import LoginScreen from "../screens/Auth/LoginScreen.js";
 import RegisterScreen from "../screens/Auth/RegisterScreen.js";
+import ReceiptScannerScreen from "../screens/ReceiptScannerScreen.js";
 import HomeStack from "./HomeStack.js";
 import { useTransactions } from "../context/TransactionContext.js";
 import { hexToRgba } from "../utils/Utils.js";
@@ -187,7 +188,10 @@ function AppNavigator() {
 
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {isLoggedIn ? (
-          <Stack.Screen name="MainApp" component={BottomTabs} />
+          <>
+            <Stack.Screen name="MainApp" component={BottomTabs} />
+            <Stack.Screen name="ReceiptScanner" component={ReceiptScannerScreen} />
+          </>
         ) : (
           <Stack.Screen name="Auth" component={AuthStack} />
         )}

@@ -19,6 +19,7 @@ import { getAIParsedExpense } from '../services/aiService';
 import InteractiveCard from '../components/InteractiveCard';
 import AppPromptModal from '../components/AppPromptModal';
 import useAppModal from '../hooks/useAppModal';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 const categories = [
   { label: 'Food',     icon: 'fast-food-outline',           subcategories: ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Drinks'] },
@@ -219,6 +220,8 @@ const ShimmerSaveButton = ({ onPress, pulse }) => {
 };
 
 const CashOutForm = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(categories[0].label);
   const [subcategory, setSubcategory] = useState('');
@@ -247,6 +250,39 @@ const CashOutForm = () => {
   }, []);
 
   const aiPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: aiPulse.value }] }));
+
+  useEffect(() => {
+    const scannedData = route.params?.scannedData;
+    if (!scannedData) return;
+
+    if (scannedData.amount) {
+      setAmount(String(scannedData.amount));
+    }
+
+    if (scannedData.category) {
+      const matchedCategory = categories.find(
+        (cat) => cat.label.toLowerCase() === String(scannedData.category).toLowerCase()
+      );
+      if (matchedCategory) {
+        setCategory(matchedCategory.label);
+        setSubcategory('');
+      }
+    }
+
+    if (scannedData.date) {
+      const normalizedDate = String(scannedData.date).replace(/-/g, '/');
+      const [day, month, year] = normalizedDate.split('/');
+      const parsedDate = new Date(Number(year), Number(month) - 1, Number(day));
+      if (!Number.isNaN(parsedDate.getTime())) {
+        const updatedDate = new Date(parsedDate);
+        updatedDate.setHours(date.getHours());
+        updatedDate.setMinutes(date.getMinutes());
+        setDate(updatedDate);
+      }
+    }
+
+    navigation.setParams({ scannedData: undefined });
+  }, [route.params?.scannedData]);
 
   const saveExpense = async ({ amount: amt, category: cat, subcategory: sub, note: userNote, expenseDate }) => {
     const user = auth().currentUser;
@@ -356,13 +392,37 @@ const CashOutForm = () => {
           <Text style={styles.fieldLabel}>
             <Icon name="cash-outline" size={13} color={ACCENT} />{'  '}Amount
           </Text>
-          <GlassInput
-            icon="logo-usd"
-            placeholder="0.00"
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="numeric"
-          />
+          <View style={styles.amountContainer}>
+            <View style={styles.amountInputWrapper}>
+              <View style={styles.currencySymbol}>
+                <Icon name="logo-usd" size={20} color={ACCENT} />
+              </View>
+              <TextInput
+                style={styles.amountInput}
+                placeholder="0.00"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+                selectionColor={ACCENT}
+              />
+            </View>
+            
+            <TouchableOpacity
+              style={styles.modernScanBtn}
+              onPress={() => navigation.navigate('ReceiptScanner')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['rgba(255,107,107,0.15)', 'rgba(255,107,107,0.08)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.scanBtnGradient}
+              >
+                <Icon name="scan-outline" size={24} color={ACCENT} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
 
           <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
             <Icon name="grid-outline" size={13} color={ACCENT} />{'  '}Category
@@ -529,6 +589,56 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 10 },
   inputText: { flex: 1, fontSize: RFValue(14), color: '#fff', padding: 0 },
 
+  // Modern amount field styles
+  amountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,107,107,0.2)',
+    overflow: 'hidden',
+  },
+  amountInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  currencySymbol: {
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,107,107,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,107,0.3)',
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: RFValue(18),
+    color: '#fff',
+    fontWeight: '600',
+    letterSpacing: 1,
+    padding: 0,
+  },
+  modernScanBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 0,
+    borderLeftWidth: 1.5,
+    borderLeftColor: 'rgba(255,107,107,0.2)',
+    overflow: 'hidden',
+  },
+  scanBtnGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   categoryBtn: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(255,107,107,0.07)',
@@ -563,6 +673,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   saveButtonText: { color: '#fff', fontSize: RFValue(15), fontWeight: '800', letterSpacing: 0.4 },
+  scanReceiptBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    borderColor: 'rgba(255,107,107,0.35)',
+    backgroundColor: 'rgba(255,107,107,0.08)',
+  },
+  scanReceiptBtnText: {
+    color: ACCENT,
+    fontSize: RFValue(12),
+    fontWeight: '700',
+  },
   shimmerBar: {
     position: 'absolute', width: 70, height: '100%',
     backgroundColor: 'rgba(255,255,255,0.16)',
