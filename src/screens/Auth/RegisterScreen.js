@@ -10,6 +10,8 @@ import {
   Platform,
   Dimensions,
   StatusBar,
+  Animated as RNAnimated,
+  Keyboard,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { RFValue } from 'react-native-responsive-fontsize';
@@ -171,12 +173,53 @@ const AnimatedInput = ({ placeholder, value, onChangeText, secureTextEntry, keyb
   );
 };
 
+const useKeyboardLift = (active = true) => {
+  const keyboardY = useRef(new RNAnimated.Value(0)).current;
+
+  useEffect(() => {
+    if (!active) return;
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e) => {
+      const kbHeight = e.endCoordinates.height;
+      // iOS: subtract safe-area bottom (~34pt) + 8pt buffer to avoid overshoot
+      const shift = Platform.OS === 'ios' ? -(kbHeight - 34 + 8) : -kbHeight;
+      RNAnimated.timing(keyboardY, {
+        toValue: shift,
+        duration: Platform.OS === 'ios' ? e.duration || 250 : 220,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const onHide = (e) => {
+      RNAnimated.timing(keyboardY, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? e.duration || 200 : 180,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const showSub = Keyboard.addListener(showEvent, onShow);
+    const hideSub = Keyboard.addListener(hideEvent, onHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [active]);
+
+  return keyboardY;
+};
+
 const RegisterScreen = ({ navigation }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { showModal, modalProps } = useAppModal();
+  const formSheetY = useKeyboardLift(true);
 
   // SAME animations (DO NOT TOUCH)
   const float = useSharedValue(0);
@@ -291,7 +334,7 @@ const RegisterScreen = ({ navigation }) => {
       </View>
 
       {/* FORM */}
-      <KeyboardAvoidingView style={styles.formSheetWrap}>
+      <RNAnimated.View style={[styles.formSheetWrap, { transform: [{ translateY: formSheetY }] }]}>
         <Animated.View style={styles.formSheet}>
 
           <View style={styles.handleBar} />
@@ -322,7 +365,7 @@ const RegisterScreen = ({ navigation }) => {
           </TouchableOpacity>
 
         </Animated.View>
-      </KeyboardAvoidingView>
+      </RNAnimated.View>
 
       <AppPromptModal {...modalProps} />
     </View>
