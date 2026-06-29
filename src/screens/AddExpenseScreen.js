@@ -121,13 +121,13 @@ const AddExpenseScreen = (screenProps) => {
                             pressScale={0.96}
                           >
                             <View style={styles.tabInner}>
-                              {isActive ? (
+                              {/* {isActive ? (
                                 <LottieView
                                   source={require('../assets/lottie/sparkle-pulse.json')}
                                   autoPlay loop
                                   style={styles.tabSparkle}
                                 />
-                              ) : null}
+                              ) : null} */}
                               <Text style={isActive ? [styles.activeTabLabel, { color: '#fff' }] : styles.tabLabel}>
                                 {route.title}
                               </Text>
