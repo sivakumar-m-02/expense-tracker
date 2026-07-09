@@ -141,7 +141,7 @@ const AIInputView = ({ onResult, onBack, onNotify }) => {
         <LinearGradient colors={['rgba(255,107,107,0.14)', 'rgba(255,107,107,0.04)']} style={ai.cardHeader}>
           <View style={ai.sparkleRow}>
             <View style={ai.iconBadge}>
-              <LottieView source={require('../assets/lottie/sparkle-pulse.json')} autoPlay loop style={ai.sparkleLottie} />
+              {/* <LottieView source={require('../assets/lottie/sparkle-pulse.json')} autoPlay loop style={ai.sparkleLottie} /> */}
               <Icon name="sparkles" size={18} color={ACCENT} />
             </View>
             <View>

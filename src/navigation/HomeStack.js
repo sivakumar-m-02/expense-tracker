@@ -5,6 +5,7 @@ import Ionicons from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
 import HomeScreen from "../screens/HomeScreen.js";
 import ListExpensesScreen from "../screens/ListExpensesScreen.js";
+import MonthRangeScreen from "../screens/MonthRangeScreen.js";
 
 const Stack = createNativeStackNavigator();
 
@@ -27,6 +28,29 @@ const DarkBackButton = ({ onPress }) => (
   </TouchableOpacity>
 );
 
+const sharedScreenOptions = (navigation, title) => ({
+  title,
+  headerBackVisible: false,
+  headerLeft: () => <DarkBackButton onPress={() => navigation.goBack()} />,
+  headerTintColor: "#fff",
+  headerTitleStyle: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  headerStyle: {
+    backgroundColor: "#050D1A",
+  },
+  headerShadowVisible: false,
+  headerBackground: () => (
+    <LinearGradient
+      colors={["#071828", "#050D1A"]}
+      style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.07)" }}
+    />
+  ),
+});
+
 function HomeStack() {
   return (
     <Stack.Navigator>
@@ -38,28 +62,12 @@ function HomeStack() {
       <Stack.Screen
         name="ListExpenses"
         component={ListExpensesScreen}
-        options={({ navigation }) => ({
-          title: "All Expenses",
-          headerBackVisible: false,
-          headerLeft: () => <DarkBackButton onPress={() => navigation.goBack()} />,
-          headerTintColor: "#fff",
-          headerTitleStyle: {
-            color: "#fff",
-            fontSize: 17,
-            fontWeight: "700",
-            letterSpacing: 0.2,
-          },
-          headerStyle: {
-            backgroundColor: "#050D1A",
-          },
-          headerShadowVisible: false,
-          headerBackground: () => (
-            <LinearGradient
-              colors={["#071828", "#050D1A"]}
-              style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.07)" }}
-            />
-          ),
-        })}
+        options={({ navigation }) => sharedScreenOptions(navigation, "All Expenses")}
+      />
+      <Stack.Screen
+        name="MonthRange"
+        component={MonthRangeScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

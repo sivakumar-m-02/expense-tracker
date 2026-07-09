@@ -14,6 +14,8 @@ import LinearGradient from "react-native-linear-gradient";
 import { StatusBar } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
 const ListExpensesScreen = () => {
   const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions } = useTransactions();
 
@@ -39,6 +41,33 @@ const ListExpensesScreen = () => {
   const searchBarAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
 
+  // ── Date filter state ──────────────────────────────────────────────────────
+  const [dateFilterModal, setDateFilterModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null); // null = no filter
+  // For the date picker inside modal: pick day from current month
+  const [pickerYear,  setPickerYear]  = useState(selectedYear);
+  const [pickerMonth, setPickerMonth] = useState(selectedMonth);
+
+  // Sync picker defaults when screen month/year changes
+  useEffect(() => {
+    setPickerYear(selectedYear);
+    setPickerMonth(selectedMonth);
+  }, [selectedMonth, selectedYear]);
+
+  const daysInPickerMonth = useMemo(() => {
+    return new Date(pickerYear, pickerMonth + 1, 0).getDate();
+  }, [pickerYear, pickerMonth]);
+
+  const dayNumbers = useMemo(() =>
+    Array.from({ length: daysInPickerMonth }, (_, i) => i + 1),
+    [daysInPickerMonth]
+  );
+
+  const activeDateLabel = useMemo(() => {
+    if (!selectedDate) return null;
+    return `${selectedDate.day} ${MONTH_NAMES[selectedDate.month]} ${selectedDate.year}`;
+  }, [selectedDate]);
+
   useEffect(() => {
     Animated.timing(searchBarAnim, { toValue: searchFocused ? 1 : 0, duration: 200, useNativeDriver: false }).start();
   }, [searchFocused]);
@@ -61,15 +90,34 @@ const ListExpensesScreen = () => {
     return { allTransactions: all, loading: expenses.length === 0 && incomes.length === 0 };
   }, [expenses, incomes, selectedMonth, selectedYear]);
 
+  // Apply both search + date filter
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery.trim()) return allTransactions;
-    const q = searchQuery.trim().toLowerCase();
-    return allTransactions.filter((t) =>
-      (t.category || "").toLowerCase().includes(q) ||
-      (t.subcategory || "").toLowerCase().includes(q) ||
-      (t.note || "").toLowerCase().includes(q)
-    );
-  }, [allTransactions, searchQuery]);
+    let result = allTransactions;
+
+    // Date filter
+    if (selectedDate) {
+      result = result.filter((t) => {
+        const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
+        return (
+          d.getDate()     === selectedDate.day   &&
+          d.getMonth()    === selectedDate.month &&
+          d.getFullYear() === selectedDate.year
+        );
+      });
+    }
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter((t) =>
+        (t.category    || "").toLowerCase().includes(q) ||
+        (t.subcategory || "").toLowerCase().includes(q) ||
+        (t.note        || "").toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [allTransactions, searchQuery, selectedDate]);
 
   const { sections, totalExpense, totalIncome, netTotal, isNetPositive,
     filteredExpense, filteredIncome, filteredNet, isFilteredNetPositive } = useMemo(() => {
@@ -90,7 +138,9 @@ const ListExpensesScreen = () => {
     return { sections: sectionData, totalExpense: expenseTotal, totalIncome: incomeTotal, netTotal: net, isNetPositive: net >= 0, filteredExpense: fExp, filteredIncome: fInc, filteredNet: fNet, isFilteredNetPositive: fNet >= 0 };
   }, [allTransactions, filteredTransactions]);
 
-  const isSearchActive = searchQuery.trim().length > 0;
+  const isSearchActive   = searchQuery.trim().length > 0;
+  const isDateActive     = !!selectedDate;
+  const isFilterActive   = isSearchActive || isDateActive;
 
   const handleDelete = async (item) => {
     try {
@@ -190,11 +240,14 @@ const ListExpensesScreen = () => {
 
   const renderEmpty = () => (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 }}>
-      {isSearchActive ? (
+      {isFilterActive ? (
         <>
           <Icon name="search-outline" size={60} color="rgba(255,255,255,0.12)" />
-          <Text style={{ marginTop: 16, fontSize: RFValue(15), color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>No results for "{searchQuery}"</Text>
-          <Text style={{ marginTop: 6, fontSize: RFValue(12), color: 'rgba(255,255,255,0.25)' }}>Try searching by category or subcategory</Text>
+          <Text style={{ marginTop: 16, fontSize: RFValue(15), color: 'rgba(255,255,255,0.4)', fontWeight: '600', textAlign: 'center' }}>
+            No results{isSearchActive ? ` for "${searchQuery}"` : ""}
+            {isDateActive ? `\non ${activeDateLabel}` : ""}
+          </Text>
+          <Text style={{ marginTop: 6, fontSize: RFValue(12), color: 'rgba(255,255,255,0.25)' }}>Try adjusting your filters</Text>
         </>
       ) : (
         <>
@@ -206,15 +259,15 @@ const ListExpensesScreen = () => {
   );
 
   const SearchResultBar = () => {
-    if (!isSearchActive) return null;
+    if (!isFilterActive) return null;
     const count = filteredTransactions.length;
     return (
       <View style={srb.wrap}>
         <View style={srb.left}>
           <Icon name="filter" size={13} color="#00C9A7" />
           <Text style={[srb.countText, { color: "#00C9A7" }]}>{count} result{count !== 1 ? 's' : ''}</Text>
-          <Text style={srb.forText}>for </Text>
-          <Text style={srb.queryText}>"{searchQuery}"</Text>
+          {isSearchActive && <><Text style={srb.forText}>for </Text><Text style={srb.queryText}>"{searchQuery}"</Text></>}
+          {isDateActive   && <Text style={srb.queryText}> {activeDateLabel}</Text>}
         </View>
         {count > 0 && (
           <View style={[srb.pill, { backgroundColor: isFilteredNetPositive ? 'rgba(29,233,182,0.15)' : 'rgba(255,107,107,0.15)' }]}>
@@ -242,6 +295,7 @@ const ListExpensesScreen = () => {
         </Animated.View>
       )}
 
+      {/* Edit Modal */}
       <Modal visible={editModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -272,31 +326,116 @@ const ListExpensesScreen = () => {
         </View>
       </Modal>
 
-      {/* Search bar */}
+      {/* Date Filter Modal */}
+      <Modal visible={dateFilterModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <Text style={styles.modalTitle}>Filter by Date</Text>
+              <TouchableOpacity onPress={() => setDateFilterModal(false)}
+                style={{ backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 999, padding: 6 }}>
+                <Icon name="close" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Month picker row */}
+            <View style={df.row}>
+              <TouchableOpacity style={df.navBtn} onPress={() => {
+                if (pickerMonth === 0) { setPickerMonth(11); setPickerYear(y => y - 1); }
+                else setPickerMonth(m => m - 1);
+              }}>
+                <Icon name="chevron-back" size={16} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+              <Text style={df.monthLabel}>{MONTH_NAMES[pickerMonth]} {pickerYear}</Text>
+              <TouchableOpacity style={df.navBtn} onPress={() => {
+                const now = new Date();
+                const atMax = pickerYear === now.getFullYear() && pickerMonth === now.getMonth();
+                if (atMax) return;
+                if (pickerMonth === 11) { setPickerMonth(0); setPickerYear(y => y + 1); }
+                else setPickerMonth(m => m + 1);
+              }}>
+                <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day grid */}
+            <View style={df.dayGrid}>
+              {dayNumbers.map((day) => {
+                const isSel = selectedDate &&
+                  selectedDate.day === day &&
+                  selectedDate.month === pickerMonth &&
+                  selectedDate.year === pickerYear;
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    style={[df.dayChip, isSel && df.dayChipActive]}
+                    onPress={() => {
+                      if (isSel) {
+                        setSelectedDate(null);
+                      } else {
+                        setSelectedDate({ day, month: pickerMonth, year: pickerYear });
+                      }
+                    }}
+                  >
+                    <Text style={[df.dayText, isSel && df.dayTextActive]}>{day}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.modalActions}>
+              {selectedDate && (
+                <TouchableOpacity style={styles.modalBtn} onPress={() => { setSelectedDate(null); setDateFilterModal(false); }}>
+                  <Text style={styles.modalBtnText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#00897B', flex: 1 }]} onPress={() => setDateFilterModal(false)}>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Search bar + Date filter button */}
       <View style={[search.wrapper, { paddingTop: insets.top + 60 }]}>
-        <Animated.View style={[search.bar, { borderColor: searchBorderColor }]}>
-          <Icon name="search" size={17} color={searchFocused ? '#00C9A7' : 'rgba(255,255,255,0.25)'} style={{ marginRight: 9 }} />
-          <TextInput
-            ref={searchInputRef}
-            style={search.input}
-            placeholder="Search by category or subcategory…"
-            placeholderTextColor="rgba(255,255,255,0.25)"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            returnKeyType="search"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => { setSearchQuery(""); searchInputRef.current?.blur(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <View style={search.clearBtn}>
-                <Icon name="close" size={12} color="#00C9A7" />
-              </View>
-            </TouchableOpacity>
-          )}
-        </Animated.View>
-        {!searchFocused && searchQuery === "" && (
+        <View style={search.rowWrap}>
+          <Animated.View style={[search.bar, { borderColor: searchBorderColor, flex: 1 }]}>
+            <Icon name="search" size={17} color={searchFocused ? '#00C9A7' : 'rgba(255,255,255,0.25)'} style={{ marginRight: 9 }} />
+            <TextInput
+              ref={searchInputRef}
+              style={search.input}
+              placeholder="Search by category or subcategory…"
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => { setSearchQuery(""); searchInputRef.current?.blur(); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <View style={search.clearBtn}>
+                  <Icon name="close" size={12} color="#00C9A7" />
+                </View>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+
+          {/* Date filter button */}
+          <TouchableOpacity
+            style={[search.dateBtn, isDateActive && search.dateBtnActive]}
+            onPress={() => setDateFilterModal(true)}
+            activeOpacity={0.75}
+          >
+            <Icon name="calendar" size={17} color={isDateActive ? "#00C9A7" : "rgba(255,255,255,0.45)"} />
+            {isDateActive && <View style={search.dateDot} />}
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick-search chips — hidden when date filter is active or search focused */}
+        {!searchFocused && searchQuery === "" && !isDateActive && (
           <View style={search.chips}>
             {['Food', 'Petrol', 'Travel', 'Shopping', 'Bills'].map((cat) => (
               <TouchableOpacity key={cat} style={search.chip} onPress={() => setSearchQuery(cat)}>
@@ -361,14 +500,34 @@ const ListExpensesScreen = () => {
 
 export default ListExpensesScreen;
 
+// ─── Search styles ─────────────────────────────────────────────────────────────
 const search = StyleSheet.create({
   wrapper: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 4 },
+  rowWrap: { flexDirection: "row", alignItems: "center", gap: 10 },
   bar: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 11 },
   input: { flex: 1, fontSize: RFValue(13), color: '#fff', padding: 0, margin: 0 },
   clearBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,201,167,0.15)', alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 7 },
   chip: { backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   chipText: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
+
+  // Date button
+  dateBtn: {
+    width: 46, height: 46, borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1.5, borderColor: "rgba(255,255,255,0.1)",
+    alignItems: "center", justifyContent: "center",
+    position: "relative",
+  },
+  dateBtnActive: {
+    borderColor: "#00C9A7",
+    backgroundColor: "rgba(0,201,167,0.1)",
+  },
+  dateDot: {
+    position: "absolute", top: 7, right: 8,
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: "#00C9A7",
+  },
 });
 
 const srb = StyleSheet.create({
@@ -379,6 +538,26 @@ const srb = StyleSheet.create({
   queryText: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontStyle: 'italic' },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 },
   pillText: { fontSize: RFValue(10) },
+});
+
+// ─── Date Filter styles ────────────────────────────────────────────────────────
+const df = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingHorizontal: 4 },
+  navBtn: { padding: 8, backgroundColor: "rgba(255,255,255,0.07)", borderRadius: 10 },
+  monthLabel: { fontSize: RFValue(15), fontWeight: "700", color: "#fff" },
+  dayGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: 7, marginBottom: 16 },
+  dayChip: {
+    width: 38, height: 38, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+  },
+  dayChipActive: {
+    backgroundColor: "#00897B",
+    borderColor: "#00C9A7",
+  },
+  dayText: { fontSize: RFValue(12), fontWeight: "600", color: "rgba(255,255,255,0.5)" },
+  dayTextActive: { color: "#fff", fontWeight: "700" },
 });
 
 const styles = StyleSheet.create({
@@ -392,8 +571,8 @@ const styles = StyleSheet.create({
   toastInner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 11, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   toastText: { color: 'rgba(255,255,255,0.8)', fontSize: RFValue(13), fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
-  modalBox: { backgroundColor: '#0D1F2D', borderRadius: 24, padding: 24, width: '85%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 18 },
+  modalBox: { backgroundColor: '#0D1F2D', borderRadius: 24, padding: 24, width: '100%', maxWidth: 370, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   modalTitle: { fontSize: RFValue(17), fontWeight: '800', color: '#fff', marginBottom: 16, textAlign: 'center' },
   input: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: 12, fontSize: RFValue(14), marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.05)', color: '#fff' },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10, gap: 10 },
