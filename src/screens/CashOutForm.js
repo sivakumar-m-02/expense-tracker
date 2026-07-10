@@ -20,6 +20,8 @@ import InteractiveCard from '../components/InteractiveCard';
 import AppPromptModal from '../components/AppPromptModal';
 import useAppModal from '../hooks/useAppModal';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSpeechToText } from '../hooks/useSpeechToText';
+import SpeechRecognizer from '../services/SpeechRecognizer';
 
 const categories = [
   { label: 'Food',     icon: 'fast-food-outline',           subcategories: ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Drinks'] },
@@ -114,6 +116,51 @@ const AIInputView = ({ onResult, onBack, onNotify }) => {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const micPulse = useSharedValue(1);
+
+  const { listening, starting, start, stop } = useSpeechToText({
+    onPartialResult: (text) => setPrompt(text),
+    onResult: (text) => setPrompt(text),
+    onError: (e) => {
+      console.log('SPEECH ERROR', e);
+      if (e.code !== 6 && e.code !== 7) {
+        onNotify({ type: 'error', title: 'Speech Error', message: e.message || 'Could not recognize speech.' });
+      }
+    },
+  });
+
+  useEffect(() => {
+    const sub = SpeechRecognizer.addSpeechListener('onSpeechVolumeChanged', (e) => {
+      console.log('mic rms:', e.value?.toFixed?.(2));
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (listening || starting) {
+      micPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.15, { duration: 500, easing: Easing.out(Easing.cubic) }),
+          withTiming(1, { duration: 500, easing: Easing.inOut(Easing.cubic) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      micPulse.value = withTiming(1, { duration: 150 });
+    }
+  }, [listening, starting]);
+
+  const handleMicPress = () => {
+    if (listening) {
+      stop();
+    } else if (!starting) {
+      start();
+    }
+  };
+
+  const micPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: micPulse.value }] }));
+
   const handleSubmit = async () => {
     if (!prompt.trim()) { onNotify({ type: 'warning', title: 'Empty Input', message: 'Please describe your expense.' }); return; }
     setLoading(true);
@@ -141,7 +188,6 @@ const AIInputView = ({ onResult, onBack, onNotify }) => {
         <LinearGradient colors={['rgba(255,107,107,0.14)', 'rgba(255,107,107,0.04)']} style={ai.cardHeader}>
           <View style={ai.sparkleRow}>
             <View style={ai.iconBadge}>
-              {/* <LottieView source={require('../assets/lottie/sparkle-pulse.json')} autoPlay loop style={ai.sparkleLottie} /> */}
               <Icon name="sparkles" size={18} color={ACCENT} />
             </View>
             <View>
@@ -152,13 +198,37 @@ const AIInputView = ({ onResult, onBack, onNotify }) => {
         </LinearGradient>
 
         <View style={{ padding: 16 }}>
-          <GlassInput
-            placeholder="e.g. had lunch for 120, bike petrol 500..."
-            value={prompt}
-            onChangeText={setPrompt}
-            multiline
-            height={90}
-          />
+          <View style={{ position: 'relative' }}>
+            <GlassInput
+              placeholder="e.g. had lunch for 120, bike petrol 500..."
+              value={prompt}
+              onChangeText={setPrompt}
+              multiline
+              height={90}
+            />
+            <Animated.View style={[ai.micButtonWrap, micPulseStyle]}>
+              <TouchableOpacity
+                style={[ai.micButton, (listening || starting) && ai.micButtonActive]}
+                onPress={handleMicPress}
+                activeOpacity={0.8}
+                disabled={starting}
+              >
+                {starting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Icon name={listening ? 'stop' : 'mic-outline'} size={17} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+
+          {(listening || starting) && (
+            <Animated.View entering={FadeInDown.duration(180)} style={ai.listeningRow}>
+              <View style={ai.listeningDot} />
+              <Text style={ai.listeningText}>{starting ? 'Starting mic…' : 'Listening… speak now'}</Text>
+            </Animated.View>
+          )}
+
           <TouchableOpacity
             style={[ai.submitBtn, (!prompt.trim() || loading) && ai.submitBtnDisabled]}
             onPress={handleSubmit}
@@ -752,6 +822,42 @@ const ai = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)',
   },
   tipText: { fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
+  micButtonWrap: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+  },
+  micButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,107,107,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,107,0.3)',
+  },
+  micButtonActive: {
+    backgroundColor: ACCENT_DARK,
+    borderColor: ACCENT,
+  },
+  listeningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  listeningDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: ACCENT,
+  },
+  listeningText: {
+    fontSize: RFValue(11),
+    color: ACCENT,
+    fontWeight: '600',
+  },
 });
 
 const modal = StyleSheet.create({
