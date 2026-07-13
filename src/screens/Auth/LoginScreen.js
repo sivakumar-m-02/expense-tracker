@@ -150,8 +150,11 @@ const ShimmerButton = ({ onPress, onPressIn, onPressOut, loading, children, pres
 };
 
 // ─── Animated Input ───────────────────────────────────────────────────────────
-const AnimatedInput = ({ placeholder, value, onChangeText, secureTextEntry, keyboardType, autoFocus }) => {
+// `isPassword` adds a right-aligned eye icon that toggles the field's visibility.
+// `secureTextEntry` still controls whether the field STARTS hidden.
+const AnimatedInput = ({ placeholder, value, onChangeText, secureTextEntry, keyboardType, autoFocus, isPassword }) => {
   const borderAnim = useSharedValue(0);
+  const [hidden, setHidden] = useState(!!secureTextEntry);
 
   const containerStyle = useAnimatedStyle(() => ({
     borderColor:   borderAnim.value === 1 ? '#00C9A7' : 'rgba(255,255,255,0.12)',
@@ -162,17 +165,32 @@ const AnimatedInput = ({ placeholder, value, onChangeText, secureTextEntry, keyb
   }));
 
   return (
-    <Animated.View style={[styles.inputWrapper, containerStyle]}>
+    <Animated.View
+      style={[
+        styles.inputWrapper,
+        containerStyle,
+        isPassword && styles.inputWrapperRow,
+      ]}
+    >
       <TextInput
         placeholder={placeholder} value={value} onChangeText={onChangeText}
         onFocus={() => (borderAnim.value = withTiming(1, { duration: 200 }))}
         onBlur={() => (borderAnim.value = withTiming(0, { duration: 200 }))}
         autoCapitalize="none" keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
+        secureTextEntry={isPassword ? hidden : secureTextEntry}
         placeholderTextColor="rgba(255,255,255,0.35)"
-        style={styles.inputText}
+        style={[styles.inputText, isPassword && { flex: 1 }]}
         autoFocus={autoFocus}
       />
+      {isPassword && (
+        <TouchableOpacity
+          onPress={() => setHidden((h) => !h)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.eyeBtn}
+        >
+          <Ionicons name={hidden ? 'eye-slash' : 'eye'} size={16} color="rgba(255,255,255,0.4)" />
+        </TouchableOpacity>
+      )}
     </Animated.View>
   );
 };
@@ -462,7 +480,7 @@ const LoginScreen = (props) => {
           <AnimatedInput placeholder="Email address" value={email}
             onChangeText={setEmail} keyboardType="email-address" />
           <AnimatedInput placeholder="Password" value={password}
-            onChangeText={setPassword} secureTextEntry />
+            onChangeText={setPassword} secureTextEntry isPassword />
 
           <TouchableOpacity style={styles.forgotWrap}
             onPress={() => setForgotVisible(true)} activeOpacity={0.7}>
@@ -542,7 +560,9 @@ const styles = StyleSheet.create({
     height: 54, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.12)',
     backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 18, justifyContent: 'center', marginBottom: 14,
   },
+  inputWrapperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   inputText: { color: '#FFFFFF', fontSize: RFValue(14) },
+  eyeBtn: { paddingLeft: 10, justifyContent: 'center', alignItems: 'center' },
 
   forgotWrap: { alignSelf: 'flex-end', marginBottom: 20, marginTop: -4 },
   forgotText: { fontSize: RFValue(12), color: '#00C9A7', fontWeight: '600' },

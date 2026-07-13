@@ -13,11 +13,13 @@ import moment from "moment";
 import LinearGradient from "react-native-linear-gradient";
 import { StatusBar } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AppPromptModal from "../components/AppPromptModal";
+import useAppModal from "../hooks/useAppModal";
 
 const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const ListExpensesScreen = () => {
-  const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions } = useTransactions();
+  const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions, removeLocalPendingExpense } = useTransactions();
 
   const [showToast, setShowToast] = useState(true);
   const toastAnim = useRef(new Animated.Value(80)).current;
@@ -34,6 +36,7 @@ const ListExpensesScreen = () => {
   const [editSubcategory, setEditSubcategory] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [showTime, setShowTime] = useState(true);
+  const { showModal: showPrompt, modalProps } = useAppModal();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -144,11 +147,33 @@ const ListExpensesScreen = () => {
 
   const handleDelete = async (item) => {
     try {
+      if (item?.pending) {
+        await removeLocalPendingExpense(item.id);
+        return;
+      }
+
       const user = auth().currentUser;
       if (!user) return;
       await firestore().collection("users").doc(user.uid)
         .collection(item.type === "expense" ? "expenses" : "income").doc(item.id).delete();
-    } catch (error) { console.log("Error deleting:", error); }
+    } catch (error) {
+      console.log("Error deleting:", error);
+      showPrompt({ type: 'error', title: 'Delete Failed', message: 'Unable to delete the expense. Please try again.' });
+    }
+  };
+
+  const confirmDelete = (item) => {
+    showPrompt({
+      type: 'warning',
+      title: 'Confirm Delete',
+      message: 'Are you sure you want to delete this transaction? This cannot be undone.',
+      buttons: [
+        { text: 'Cancel', style: 'secondary' },
+        { text: 'Delete', style: 'danger', onPress: () => {
+          handleDelete(item);
+        } },
+      ],
+    });
   };
 
   const renderRightActions = (item) => (
@@ -160,7 +185,7 @@ const ListExpensesScreen = () => {
       }}>
         <Icon name="create" size={20} color="#fff" />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.deleteContainer} onPress={() => handleDelete(item)}>
+      <TouchableOpacity style={styles.deleteContainer} onPress={() => confirmDelete(item)}>
         <Icon name="trash" size={20} color="#fff" />
       </TouchableOpacity>
     </View>
@@ -494,6 +519,7 @@ const ListExpensesScreen = () => {
           </View>
         ))}
       </LinearGradient>
+      <AppPromptModal {...modalProps} />
     </View>
   );
 };

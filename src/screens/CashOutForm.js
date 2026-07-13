@@ -16,10 +16,12 @@ import Animated, {
   useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming,
 } from 'react-native-reanimated';
 import { getAIParsedExpense } from '../services/aiService';
+import { queueOfflineExpense } from '../services/offlineExpenseSyncService';
+import NetInfo from '@react-native-community/netinfo';
 import InteractiveCard from '../components/InteractiveCard';
 import AppPromptModal from '../components/AppPromptModal';
 import useAppModal from '../hooks/useAppModal';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import SpeechRecognizer from '../services/SpeechRecognizer';
 
@@ -307,6 +309,7 @@ const CashOutForm = () => {
 
   const aiPulse = useSharedValue(1);
   const addPulse = useSharedValue(1);
+  const isFocus = useIsFocused();
 
   useEffect(() => {
     aiPulse.value = withRepeat(withSequence(
@@ -357,11 +360,41 @@ const CashOutForm = () => {
   const saveExpense = async ({ amount: amt, category: cat, subcategory: sub, note: userNote, expenseDate }) => {
     const user = auth().currentUser;
     if (!user) { showPrompt({ type: 'error', title: 'Error', message: 'You must be logged in.' }); return false; }
-    await firestore().collection('users').doc(user.uid).collection('expenses').add({
-      amount: parseFloat(amt), category: cat, subcategory: sub || null,
-      note: userNote || null, date: expenseDate || new Date(), createdAt: new Date(),
-    });
-    return true;
+
+    const expensePayload = {
+      amount: parseFloat(amt),
+      category: cat,
+      subcategory: sub || null,
+      note: userNote || null,
+      date: expenseDate || new Date(),
+      createdAt: new Date(),
+    };
+
+    try {
+      const connection = await NetInfo.fetch();
+      const isOnline = connection.isConnected && connection.isInternetReachable !== false;
+      if (!isOnline) {
+        const queued = await queueOfflineExpense(expensePayload);
+        if (queued) {
+          showPrompt({ type: 'info', title: 'Offline Saved', message: 'Your expense was saved locally and will sync when you are back online.' });
+          return true;
+        }
+        showPrompt({ type: 'error', title: 'Save Failed', message: 'Unable to save the expense locally. Please try again later.' });
+        return false;
+      }
+
+      await firestore().collection('users').doc(user.uid).collection('expenses').add(expensePayload);
+      return true;
+    } catch (error) {
+      console.log('CashOutForm saveExpense offline fallback:', error);
+      const queued = await queueOfflineExpense(expensePayload);
+      if (queued) {
+        showPrompt({ type: 'info', title: 'Offline Saved', message: 'Your expense was saved locally and will sync when you are back online.' });
+        return true;
+      }
+      showPrompt({ type: 'error', title: 'Save Failed', message: 'Unable to save the expense. Please try again later.' });
+      return false;
+    }
   };
 
   const resetManualForm = () => {
