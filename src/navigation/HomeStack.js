@@ -6,6 +6,7 @@ import LinearGradient from "react-native-linear-gradient";
 import HomeScreen from "../screens/HomeScreen.js";
 import ListExpensesScreen from "../screens/ListExpensesScreen.js";
 import MonthRangeScreen from "../screens/MonthRangeScreen.js";
+import MonthDetailScreen from "../screens/MonthDetailScreen.js";
 
 const Stack = createNativeStackNavigator();
 
@@ -67,6 +68,11 @@ function HomeStack() {
       <Stack.Screen
         name="MonthRange"
         component={MonthRangeScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="MonthDetail"
+        component={MonthDetailScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

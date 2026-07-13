@@ -217,6 +217,7 @@ const RegisterScreen = ({ navigation }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { showModal, modalProps } = useAppModal();
   const formSheetY = useKeyboardLift(true);
@@ -261,11 +262,20 @@ const RegisterScreen = ({ navigation }) => {
 
   // REGISTER LOGIC
   const handleRegister = async () => {
-    if (!name.trim() || !email.trim() || !password) {
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
       showModal({
         type: 'warning',
         title: 'Missing Fields',
         message: 'Please fill all fields.',
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showModal({
+        type: 'warning',
+        title: 'Passwords Do Not Match',
+        message: 'Please make sure both password fields are the same.',
       });
       return;
     }
@@ -344,6 +354,7 @@ const RegisterScreen = ({ navigation }) => {
           <AnimatedInput placeholder="Full Name" value={name} onChangeText={setName} />
           <AnimatedInput placeholder="Email" value={email} onChangeText={setEmail} />
           <AnimatedInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+          <AnimatedInput placeholder="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
 
           <ShimmerButton
             onPress={handleRegister}
