@@ -1,22 +1,67 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { AppState } from "react-native";
+import NetInfo from '@react-native-community/netinfo';
 import auth from "@react-native-firebase/auth";
 import firestore from "@react-native-firebase/firestore";
+import {
+  getPendingOfflineExpenses,
+  syncPendingOfflineExpenses,
+  removePendingOfflineExpense,
+} from "../services/offlineExpenseSyncService";
 
 const TransactionContext = createContext();
 
 export const useTransactions = () => useContext(TransactionContext);
 
+const mergeExpenses = (remoteExpenses = [], pendingExpenses = []) => {
+  const pendingItems = pendingExpenses.map((item) => ({
+    ...item,
+    date: item.date ? new Date(item.date) : new Date(),
+    type: 'expense',
+    pending: true,
+  }));
+  return [...remoteExpenses, ...pendingItems].sort((a, b) => new Date(b.date) - new Date(a.date));
+};
 
 export const TransactionProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
+  const [remoteExpenses, setRemoteExpenses] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [incomes, setIncomes] = useState([]);
+  const [pendingOfflineExpenses, setPendingOfflineExpenses] = useState([]);
   const [error, setError] = useState(null);
   const [budget, setBudget] = useState(0);
   const [primaryColor, setPrimaryColor] = useState("#37474F");
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+  useEffect(() => {
+    setExpenses(mergeExpenses(remoteExpenses, pendingOfflineExpenses));
+  }, [remoteExpenses, pendingOfflineExpenses]);
+
+  const loadPendingExpenses = useCallback(async () => {
+    try {
+      const pending = await getPendingOfflineExpenses();
+      setPendingOfflineExpenses(pending);
+    } catch (e) {
+      console.log('TransactionContext loadPendingExpenses error:', e);
+    }
+  }, []);
+
+  const syncPendingWhenAvailable = useCallback(async (user) => {
+    if (!user) return;
+    try {
+      const stillPending = await syncPendingOfflineExpenses(user.uid);
+      setPendingOfflineExpenses(stillPending);
+    } catch (e) {
+      console.log('TransactionContext syncPendingWhenAvailable error:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPendingExpenses();
+  }, [loadPendingExpenses]);
 
   useEffect(() => {
     let unsubProfile = null;
@@ -26,13 +71,12 @@ export const TransactionProvider = ({ children }) => {
     let firstLoadB = true;
 
     const unsubscribeAuth = auth().onAuthStateChanged((user) => {
-      // Clean up previous listeners
       unsubA?.();
       unsubB?.();
       unsubProfile?.();
 
       if (!user) {
-        setExpenses([]);
+        setRemoteExpenses([]);
         setIncomes([]);
         setBudget(0);
         setPrimaryColor("#37474F");
@@ -43,7 +87,6 @@ export const TransactionProvider = ({ children }) => {
       setError(null);
       setLoading(true);
 
-      // Fetch budget from user profile
       const userRef = firestore().collection("users").doc(user.uid);
       unsubProfile = userRef.onSnapshot(
         (doc) => {
@@ -53,6 +96,7 @@ export const TransactionProvider = ({ children }) => {
         },
         (e) => {
           setError("Failed to load profile. Please try again later.");
+          setLoading(false);
           console.log("TransactionContext profile error:", e);
         }
       );
@@ -67,7 +111,7 @@ export const TransactionProvider = ({ children }) => {
         (qs) => {
           const list = [];
           qs.forEach((doc) => list.push({ id: doc.id, ...doc.data(), type: "expense" }));
-          setExpenses(list);
+          setRemoteExpenses(list);
           if (firstLoadA) {
             firstLoadA = false;
             if (!firstLoadB) setLoading(false);
@@ -96,6 +140,8 @@ export const TransactionProvider = ({ children }) => {
           console.log("TransactionContext income error:", e);
         }
       );
+
+      syncPendingWhenAvailable(user);
     });
 
     return () => {
@@ -104,7 +150,33 @@ export const TransactionProvider = ({ children }) => {
       unsubProfile?.();
       unsubscribeAuth?.();
     };
-  }, []);
+  }, [syncPendingWhenAvailable]);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const isOnline = state.isConnected && state.isInternetReachable !== false;
+      if (isOnline) {
+        const user = auth().currentUser;
+        if (user) {
+          syncPendingWhenAvailable(user);
+        }
+      }
+    });
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        const user = auth().currentUser;
+        if (user) {
+          syncPendingWhenAvailable(user);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      subscription.remove();
+    };
+  }, [syncPendingWhenAvailable]);
 
   // Manual refresh function
   const refreshTransactions = async () => {
@@ -113,20 +185,19 @@ export const TransactionProvider = ({ children }) => {
     try {
       const user = auth().currentUser;
       if (!user) {
-        setExpenses([]);
+        setRemoteExpenses([]);
         setIncomes([]);
         setLoading(false);
         return;
       }
       const userRef = firestore().collection("users").doc(user.uid);
-      // Expenses
       const expensesSnap = await userRef.collection("expenses").orderBy("date", "desc").get();
       const expensesList = expensesSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: "expense" }));
-      setExpenses(expensesList);
-      // Income
+      setRemoteExpenses(expensesList);
       const incomeSnap = await userRef.collection("income").orderBy("date", "desc").get();
       const incomeList = incomeSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), type: "income" }));
       setIncomes(incomeList);
+      await loadPendingExpenses();
     } catch (e) {
       setError("Failed to refresh transactions. Please try again later.");
       console.log("TransactionContext manual refresh error:", e);
@@ -134,8 +205,34 @@ export const TransactionProvider = ({ children }) => {
     setLoading(false);
   };
 
+  const removeLocalPendingExpense = async (id) => {
+    try {
+      const stillPending = await removePendingOfflineExpense(id);
+      setPendingOfflineExpenses(stillPending);
+    } catch (e) {
+      console.log('TransactionContext removeLocalPendingExpense error:', e);
+    }
+  };
+
   return (
-  <TransactionContext.Provider value={{ expenses, incomes, loading, error, budget, setBudget, primaryColor, setPrimaryColor, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear, refreshTransactions }}>
+    <TransactionContext.Provider
+      value={{
+        expenses,
+        incomes,
+        loading,
+        error,
+        budget,
+        setBudget,
+        primaryColor,
+        setPrimaryColor,
+        selectedMonth,
+        setSelectedMonth,
+        selectedYear,
+        setSelectedYear,
+        refreshTransactions,
+        removeLocalPendingExpense,
+      }}
+    >
       {children}
     </TransactionContext.Provider>
   );

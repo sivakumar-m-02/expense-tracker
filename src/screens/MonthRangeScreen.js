@@ -4,9 +4,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   StatusBar,
   Dimensions,
+  Switch,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import LinearGradient from "react-native-linear-gradient";
@@ -91,6 +92,7 @@ const MonthRangeScreen = () => {
   const [endMonth,   setEndMonth]   = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [pickerMode, setPickerMode] = useState(null); // null | "start" | "end"
   const [applied, setApplied] = useState(false);
+  const [hideZeroExpense, setHideZeroExpense] = useState(false);
 
   // Clamp: end must not be before start
   const clampedEnd = useMemo(() => {
@@ -137,6 +139,11 @@ const MonthRangeScreen = () => {
     });
   }, [monthRange, expenses, incomes]);
 
+  const displayedMonthStats = useMemo(() => {
+    if (!hideZeroExpense) return monthStats;
+    return monthStats.filter((s) => s.totalExpense > 0);
+  }, [monthStats, hideZeroExpense]);
+
   const grandTotals = useMemo(() => {
     return monthStats.reduce((acc, s) => ({
       expense: acc.expense + s.totalExpense,
@@ -152,6 +159,130 @@ const MonthRangeScreen = () => {
 
   const startLabel = `${MONTH_NAMES[startMonth.month]} ${startMonth.year}`;
   const endLabel   = `${MONTH_NAMES[clampedEnd.month]} ${clampedEnd.year}`;
+
+  const renderMonthCard = ({ item, index }) => {
+    const { year, month, totalExpense, totalIncome, net } = item;
+    const isPos = net >= 0;
+    return (
+      <Animated.View
+        entering={FadeInDown.duration(220).delay(Math.min(index * 40, 200))}
+      >
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => navigation.navigate("MonthDetail", { year, month })}
+        >
+          <LinearGradient
+            colors={["rgba(255,255,255,0.06)", "rgba(255,255,255,0.02)"]}
+            style={styles.monthCard}
+          >
+            {/* Month label */}
+            <View style={styles.monthLabelCol}>
+              <Text style={styles.monthName}>{MONTH_NAMES[month]}</Text>
+              <Text style={styles.monthYear}>{year}</Text>
+            </View>
+
+            {/* Income / Expense bars */}
+            <View style={styles.monthDataCol}>
+              <View style={styles.monthDataRow}>
+                <View style={[styles.dot, { backgroundColor: "#1DE9B6" }]} />
+                <Text style={styles.monthDataLabel}>In</Text>
+                <Text style={[styles.monthDataValue, { color: "#1DE9B6" }]}>
+                  {RUPEE} {totalIncome.toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.monthDataRow}>
+                <View style={[styles.dot, { backgroundColor: "#FF6B6B" }]} />
+                <Text style={styles.monthDataLabel}>Out</Text>
+                <Text style={[styles.monthDataValue, { color: "#FF6B6B" }]}>
+                  {RUPEE} {totalExpense.toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            {/* Net pill */}
+            <View style={[styles.netPill, { backgroundColor: isPos ? "rgba(29,233,182,0.15)" : "rgba(255,107,107,0.15)" }]}>
+              <Ionicons
+                name={isPos ? "trending-up" : "trending-down"}
+                size={12}
+                color={isPos ? "#1DE9B6" : "#FF6B6B"}
+                style={{ marginBottom: 3 }}
+              />
+              <Text style={[styles.netPillLabel, { color: isPos ? "#1DE9B6" : "#FF6B6B" }]}>
+                {isPos ? "+" : "-"}{RUPEE}{Math.abs(net).toLocaleString()}
+              </Text>
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  const ListHeader = () => (
+    <>
+      {/* Grand total summary */}
+      {monthStats.length > 0 && (
+        <Animated.View entering={FadeInUp.duration(280).delay(60)} style={styles.summaryCard}>
+          <LinearGradient colors={["rgba(255,255,255,0.07)", "rgba(255,255,255,0.03)"]} style={styles.summaryCardInner}>
+            <View style={styles.summaryCardBorder} />
+            <Text style={styles.summaryCardTitle}>{startLabel} — {endLabel}</Text>
+            <View style={styles.summaryCardRow}>
+              <View style={styles.summaryPill}>
+                <LinearGradient colors={["rgba(29,233,182,0.2)", "rgba(29,233,182,0.07)"]} style={styles.summaryPillInner}>
+                  <Ionicons name="arrow-down" size={14} color="#1DE9B6" />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={styles.summaryPillLabel}>Total In</Text>
+                    <Text style={[styles.summaryPillValue, { color: "#1DE9B6" }]}>{RUPEE} {grandTotals.income.toLocaleString()}</Text>
+                  </View>
+                </LinearGradient>
+              </View>
+              <View style={styles.summaryPill}>
+                <LinearGradient colors={["rgba(255,107,107,0.2)", "rgba(255,107,107,0.07)"]} style={styles.summaryPillInner}>
+                  <Ionicons name="arrow-up" size={14} color="#FF6B6B" />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={styles.summaryPillLabel}>Total Out</Text>
+                    <Text style={[styles.summaryPillValue, { color: "#FF6B6B" }]}>{RUPEE} {grandTotals.expense.toLocaleString()}</Text>
+                  </View>
+                </LinearGradient>
+              </View>
+            </View>
+            <View style={styles.netRow}>
+              <Text style={styles.netLabel}>Net Balance</Text>
+              <Text style={[styles.netValue, { color: grandTotals.net >= 0 ? "#1DE9B6" : "#FF6B6B" }]}>
+                {grandTotals.net >= 0 ? "+" : ""}{RUPEE} {Math.abs(grandTotals.net).toLocaleString()}
+              </Text>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+      )}
+
+      {monthStats.length > 0 && (
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Monthly Breakdown</Text>
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>{`${!!!hideZeroExpense ? "Hide ₹0" : displayedMonthStats.length} months`}</Text>
+            <Switch
+              value={hideZeroExpense}
+              onValueChange={setHideZeroExpense}
+              trackColor={{ false: "rgba(255,255,255,0.15)", true: "rgba(0,201,167,0.4)" }}
+              thumbColor={hideZeroExpense ? "#00C9A7" : "#f4f3f4"}
+              ios_backgroundColor="rgba(255,255,255,0.15)"
+            />
+          </View>
+        </View>
+      )}
+    </>
+  );
+
+  const ListEmpty = () => (
+    <View style={styles.emptyBox}>
+      <Ionicons name="calendar-outline" size={40} color="rgba(255,255,255,0.15)" />
+      <Text style={styles.emptyText}>
+        {monthStats.length === 0
+          ? "Select a month range above"
+          : "No months with expenses in this range"}
+      </Text>
+    </View>
+  );
 
   return (
     <View style={styles.root}>
@@ -238,110 +369,19 @@ const MonthRangeScreen = () => {
         )}
       </SafeAreaView>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+      <FlatList
+        data={displayedMonthStats}
+        keyExtractor={(item) => `${item.year}-${item.month}`}
+        renderItem={renderMonthCard}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
-      >
-        {/* Grand total summary */}
-        {monthStats.length > 0 && (
-          <Animated.View entering={FadeInUp.duration(280).delay(60)} style={styles.summaryCard}>
-            <LinearGradient colors={["rgba(255,255,255,0.07)", "rgba(255,255,255,0.03)"]} style={styles.summaryCardInner}>
-              <View style={styles.summaryCardBorder} />
-              <Text style={styles.summaryCardTitle}>{startLabel} — {endLabel}</Text>
-              <View style={styles.summaryCardRow}>
-                <View style={styles.summaryPill}>
-                  <LinearGradient colors={["rgba(29,233,182,0.2)", "rgba(29,233,182,0.07)"]} style={styles.summaryPillInner}>
-                    <Ionicons name="arrow-down" size={14} color="#1DE9B6" />
-                    <View style={{ marginLeft: 8 }}>
-                      <Text style={styles.summaryPillLabel}>Total In</Text>
-                      <Text style={[styles.summaryPillValue, { color: "#1DE9B6" }]}>{RUPEE} {grandTotals.income.toLocaleString()}</Text>
-                    </View>
-                  </LinearGradient>
-                </View>
-                <View style={styles.summaryPill}>
-                  <LinearGradient colors={["rgba(255,107,107,0.2)", "rgba(255,107,107,0.07)"]} style={styles.summaryPillInner}>
-                    <Ionicons name="arrow-up" size={14} color="#FF6B6B" />
-                    <View style={{ marginLeft: 8 }}>
-                      <Text style={styles.summaryPillLabel}>Total Out</Text>
-                      <Text style={[styles.summaryPillValue, { color: "#FF6B6B" }]}>{RUPEE} {grandTotals.expense.toLocaleString()}</Text>
-                    </View>
-                  </LinearGradient>
-                </View>
-              </View>
-              <View style={styles.netRow}>
-                <Text style={styles.netLabel}>Net Balance</Text>
-                <Text style={[styles.netValue, { color: grandTotals.net >= 0 ? "#1DE9B6" : "#FF6B6B" }]}>
-                  {grandTotals.net >= 0 ? "+" : ""}{RUPEE} {Math.abs(grandTotals.net).toLocaleString()}
-                </Text>
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        )}
-
-        {/* Per-month list */}
-        {monthStats.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Ionicons name="calendar-outline" size={40} color="rgba(255,255,255,0.15)" />
-            <Text style={styles.emptyText}>Select a month range above</Text>
-          </View>
-        ) : (
-          <>
-            <Text style={styles.sectionTitle}>Monthly Breakdown</Text>
-            {monthStats.map(({ year, month, totalExpense, totalIncome, net }, i) => {
-              const isPos = net >= 0;
-              return (
-                <Animated.View
-                  key={`${year}-${month}`}
-                  entering={FadeInDown.duration(220).delay(Math.min(i * 40, 200))}
-                >
-                  <LinearGradient
-                    colors={["rgba(255,255,255,0.06)", "rgba(255,255,255,0.02)"]}
-                    style={styles.monthCard}
-                  >
-                    {/* Month label */}
-                    <View style={styles.monthLabelCol}>
-                      <Text style={styles.monthName}>{MONTH_NAMES[month]}</Text>
-                      <Text style={styles.monthYear}>{year}</Text>
-                    </View>
-
-                    {/* Income / Expense bars */}
-                    <View style={styles.monthDataCol}>
-                      <View style={styles.monthDataRow}>
-                        <View style={[styles.dot, { backgroundColor: "#1DE9B6" }]} />
-                        <Text style={styles.monthDataLabel}>In</Text>
-                        <Text style={[styles.monthDataValue, { color: "#1DE9B6" }]}>
-                          {RUPEE} {totalIncome.toLocaleString()}
-                        </Text>
-                      </View>
-                      <View style={styles.monthDataRow}>
-                        <View style={[styles.dot, { backgroundColor: "#FF6B6B" }]} />
-                        <Text style={styles.monthDataLabel}>Out</Text>
-                        <Text style={[styles.monthDataValue, { color: "#FF6B6B" }]}>
-                          {RUPEE} {totalExpense.toLocaleString()}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Net pill */}
-                    <View style={[styles.netPill, { backgroundColor: isPos ? "rgba(29,233,182,0.15)" : "rgba(255,107,107,0.15)" }]}>
-                      <Ionicons
-                        name={isPos ? "trending-up" : "trending-down"}
-                        size={12}
-                        color={isPos ? "#1DE9B6" : "#FF6B6B"}
-                        style={{ marginBottom: 3 }}
-                      />
-                      <Text style={[styles.netPillLabel, { color: isPos ? "#1DE9B6" : "#FF6B6B" }]}>
-                        {isPos ? "+" : "-"}{RUPEE}{Math.abs(net).toLocaleString()}
-                      </Text>
-                    </View>
-                  </LinearGradient>
-                </Animated.View>
-              );
-            })}
-          </>
-        )}
-      </ScrollView>
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews
+      />
     </View>
   );
 };
@@ -431,7 +471,10 @@ const styles = StyleSheet.create({
   netLabel: { fontSize: RFValue(13), color: "rgba(255,255,255,0.5)", fontWeight: "600" },
   netValue: { fontSize: RFValue(16), fontWeight: "900" },
 
-  sectionTitle: { fontSize: RFValue(15), fontWeight: "800", color: "#fff", marginBottom: 12, letterSpacing: 0.2 },
+  sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitle: { fontSize: RFValue(15), fontWeight: "800", color: "#fff", letterSpacing: 0.2 },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  toggleLabel: { fontSize: RFValue(11), color: "rgba(255,255,255,0.5)", fontWeight: "600" },
 
   monthCard: {
     flexDirection: "row",
