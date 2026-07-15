@@ -25,13 +25,21 @@ import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native'
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import SpeechRecognizer from '../services/SpeechRecognizer';
 
-const categories = [
+const DEFAULT_CATEGORIES = [
   { label: 'Food',     icon: 'fast-food-outline',           subcategories: ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Drinks'] },
   { label: 'Petrol',   icon: 'flame-outline',               subcategories: ['Bike', 'Car', 'Other'] },
   { label: 'Travel',   icon: 'car-outline' },
   { label: 'Shopping', icon: 'cart-outline' },
   { label: 'Bills',    icon: 'receipt-outline' },
   { label: 'Other',    icon: 'ellipsis-horizontal-outline' },
+];
+
+// Icons a user can pick from when creating their own category
+const ICON_OPTIONS = [
+  'pricetag-outline', 'home-outline', 'medkit-outline', 'school-outline',
+  'gift-outline', 'airplane-outline', 'shirt-outline', 'game-controller-outline',
+  'paw-outline', 'book-outline', 'wifi-outline', 'fitness-outline',
+  'musical-notes-outline', 'cafe-outline', 'card-outline', 'ellipsis-horizontal-outline',
 ];
 
 const ACCENT = '#FF6B6B';
@@ -79,7 +87,7 @@ const DetailRow = ({ icon, label, value, highlight }) => (
 
 const AIConfirmModal = ({ visible, parsed, onAdd, onCancel, saving }) => {
   if (!parsed) return null;
-  const categoryIcon = categories.find((c) => c.label === parsed.category)?.icon || 'ellipsis-horizontal-outline';
+  const categoryIcon = DEFAULT_CATEGORIES.find((c) => c.label === parsed.category)?.icon || 'ellipsis-horizontal-outline';
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onCancel}>
       <View style={modal.overlay}>
@@ -295,7 +303,8 @@ const CashOutForm = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState(categories[0].label);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [category, setCategory] = useState(DEFAULT_CATEGORIES[0].label);
   const [subcategory, setSubcategory] = useState('');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -306,6 +315,13 @@ const CashOutForm = () => {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const { showModal: showPrompt, modalProps } = useAppModal();
+
+  // ── Custom category / subcategory creation ────────────────────────────────
+  const [addCategoryModalVisible, setAddCategoryModalVisible] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryIcon, setNewCategoryIcon] = useState(ICON_OPTIONS[0]);
+  const [addSubcategoryModalVisible, setAddSubcategoryModalVisible] = useState(false);
+  const [newSubcategoryName, setNewSubcategoryName] = useState('');
 
   const aiPulse = useSharedValue(1);
   const addPulse = useSharedValue(1);
@@ -323,6 +339,175 @@ const CashOutForm = () => {
   }, []);
 
   const aiPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: aiPulse.value }] }));
+
+  // Load the user's saved category list (defaults + anything they've added before)
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const user = auth().currentUser;
+        if (!user) { setCategories(DEFAULT_CATEGORIES); return; }
+        const doc = await firestore().collection('users').doc(user.uid).get();
+        const saved = doc.data()?.customCategoryData;
+        if (Array.isArray(saved) && saved.length > 0) {
+          setCategories(saved);
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+        }
+      } catch (error) {
+        console.log('Error loading categories:', error);
+        setCategories(DEFAULT_CATEGORIES);
+      }
+    };
+    loadCategories();
+  }, []);
+
+  const persistCategories = async (updatedCategories) => {
+    try {
+      const user = auth().currentUser;
+      if (!user) return;
+      await firestore().collection('users').doc(user.uid).set(
+        { customCategoryData: updatedCategories },
+        { merge: true }
+      );
+    } catch (error) {
+      console.log('Error saving categories:', error);
+      showPrompt({ type: 'error', title: 'Save Failed', message: 'Could not save your category. Please try again.' });
+    }
+  };
+
+  const handleAddCategory = () => {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) {
+      showPrompt({ type: 'warning', title: 'Name Required', message: 'Please enter a category name.' });
+      return;
+    }
+    const alreadyExists = categories.some((c) => c.label.toLowerCase() === trimmed.toLowerCase());
+    if (alreadyExists) {
+      showPrompt({ type: 'warning', title: 'Already Exists', message: 'A category with this name already exists.' });
+      return;
+    }
+    const newCategory = { label: trimmed, icon: newCategoryIcon, subcategories: [] };
+    const updated = [...categories, newCategory];
+    setCategories(updated);
+    setCategory(trimmed);
+    setSubcategory('');
+    persistCategories(updated);
+    setAddCategoryModalVisible(false);
+    setNewCategoryName('');
+    setNewCategoryIcon(ICON_OPTIONS[0]);
+  };
+
+  const handleAddSubcategory = () => {
+    const trimmed = newSubcategoryName.trim();
+    if (!trimmed) {
+      showPrompt({ type: 'warning', title: 'Name Required', message: 'Please enter a subcategory name.' });
+      return;
+    }
+    const current = categories.find((c) => c.label === category);
+    const existingSubs = current?.subcategories || [];
+    const alreadyExists = existingSubs.some((s) => s.toLowerCase() === trimmed.toLowerCase());
+    if (alreadyExists) {
+      showPrompt({ type: 'warning', title: 'Already Exists', message: 'This subcategory already exists.' });
+      return;
+    }
+    const updated = categories.map((c) =>
+      c.label === category ? { ...c, subcategories: [...existingSubs, trimmed] } : c
+    );
+    setCategories(updated);
+    setSubcategory(trimmed);
+    persistCategories(updated);
+    setAddSubcategoryModalVisible(false);
+    setNewSubcategoryName('');
+  };
+
+  const isDefaultCategory = (label) =>
+    DEFAULT_CATEGORIES.some((c) => c.label === label);
+
+  const handleDeleteCategory = (selectedCategory) => {
+    if (isDefaultCategory(selectedCategory.label)) {
+      showPrompt({
+        type: 'warning',
+        title: 'Cannot Delete',
+        message: 'Default categories cannot be deleted.',
+      });
+      return;
+    }
+
+    showPrompt({
+      type: 'warning',
+      title: 'Delete Category',
+      message: `Are you sure you want to delete "${selectedCategory.label}"?`,
+      buttons: [
+        {
+          text: 'Cancel',
+          style: 'secondary',
+        },
+        {
+          text: 'Delete',
+          style: 'danger',
+          onPress: async () => {
+            const updated = categories.filter(
+              (c) => c.label !== selectedCategory.label
+            );
+
+            setCategories(updated);
+
+            await persistCategories(updated);
+
+            if (category === selectedCategory.label) {
+              setCategory(DEFAULT_CATEGORIES[0].label);
+              setSubcategory('');
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  const isDefaultSubcategory = (label) =>
+    DEFAULT_CATEGORIES.some((c) => c.label === category && c.subcategories.includes(label));
+
+  const handleDeleteSubcategory = (sub) => {
+    if (isDefaultSubcategory(sub)) {
+      showPrompt({
+        type: 'warning',
+        title: 'Cannot Delete',
+        message: 'Default subcategories cannot be deleted.',
+      });
+      return;
+    }
+    showPrompt({
+      type: 'warning',
+      title: 'Delete Subcategory',
+      message: `Delete "${sub}"?`,
+      buttons: [
+        {
+          text: 'Cancel',
+          style: 'secondary',
+        },
+        {
+          text: 'Delete',
+          style: 'danger',
+          onPress: async () => {
+            const updated = categories.map((cat) => {
+              if (cat.label !== category) return cat;
+
+              return {
+                ...cat,
+                subcategories: cat.subcategories.filter((item) => item !== sub),
+              };
+            });
+            setCategories(updated);
+            persistCategories(updated);
+
+            if (subcategory === sub) {
+              setSubcategory('');
+            }
+          },
+        },
+      ],
+    });
+  };
 
   useEffect(() => {
     const scannedData = route.params?.scannedData;
@@ -398,7 +583,7 @@ const CashOutForm = () => {
   };
 
   const resetManualForm = () => {
-    setAmount(''); setCategory(categories[0].label); setSubcategory(''); setNote(''); setDate(new Date());
+    setAmount(''); setCategory(categories[0]?.label || DEFAULT_CATEGORIES[0].label); setSubcategory(''); setNote(''); setDate(new Date());
   };
 
   const handleSave = async () => {
@@ -544,6 +729,8 @@ const CashOutForm = () => {
                 <TouchableOpacity
                   style={[styles.categoryBtn, category === cat.label && styles.categoryBtnActive]}
                   onPress={() => { setCategory(cat.label); setSubcategory(''); }}
+                  onLongPress={() => handleDeleteCategory(cat)}
+                  delayLongPress={500}
                   activeOpacity={0.78}
                 >
                   <Icon name={cat.icon} size={16} color={category === cat.label ? '#fff' : ACCENT} />
@@ -553,18 +740,30 @@ const CashOutForm = () => {
                 </TouchableOpacity>
               </Animated.View>
             )}
+            ListFooterComponent={
+              <TouchableOpacity
+                style={styles.addChip}
+                onPress={() => setAddCategoryModalVisible(true)}
+                activeOpacity={0.78}
+              >
+                <Icon name="add" size={15} color="rgba(255,255,255,0.6)" />
+                <Text style={styles.addChipText}>New</Text>
+              </TouchableOpacity>
+            }
           />
 
           {(() => {
             const selectedCat = categories.find((cat) => cat.label === category);
-            if (!selectedCat?.subcategories) return null;
+            const subs = selectedCat?.subcategories || [];
             return (
               <View style={styles.subcategoryWrap}>
-                {selectedCat.subcategories.map((sub) => (
+                {subs.map((sub) => (
                   <Animated.View key={sub} layout={Layout.springify().damping(17).stiffness(180)}>
                     <TouchableOpacity
                       style={[styles.subcategoryBtn, subcategory === sub && styles.subcategoryBtnActive]}
                       onPress={() => setSubcategory(sub)}
+                      onLongPress={() => handleDeleteSubcategory(sub)}
+                      delayLongPress={500}
                       activeOpacity={0.78}
                     >
                       <Text style={[styles.subcategoryText, subcategory === sub && { color: '#fff' }]}>
@@ -573,6 +772,14 @@ const CashOutForm = () => {
                     </TouchableOpacity>
                   </Animated.View>
                 ))}
+                <TouchableOpacity
+                  style={styles.addChip}
+                  onPress={() => setAddSubcategoryModalVisible(true)}
+                  activeOpacity={0.78}
+                >
+                  <Icon name="add" size={13} color="rgba(255,255,255,0.6)" />
+                  <Text style={styles.addChipText}>Add</Text>
+                </TouchableOpacity>
               </View>
             );
           })()}
@@ -634,6 +841,88 @@ const CashOutForm = () => {
           <ShimmerSaveButton onPress={handleSave} pulse={addPulse} />
         </Animated.View>
       </KeyboardAwareScrollView>
+
+      {/* Add Category Modal */}
+      <Modal
+        visible={addCategoryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddCategoryModalVisible(false)}
+      >
+        <View style={catModal.overlay}>
+          <Animated.View entering={FadeInDown.duration(220)} style={catModal.card}>
+            <Text style={catModal.title}>New Category</Text>
+            <Text style={catModal.subtitle}>Create a category for expenses that don't fit the defaults</Text>
+            <TextInput
+              style={catModal.input}
+              placeholder="e.g. Subscriptions"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={newCategoryName}
+              onChangeText={setNewCategoryName}
+              autoFocus
+            />
+            <Text style={catModal.iconLabel}>Choose an icon</Text>
+            <View style={catModal.iconGrid}>
+              {ICON_OPTIONS.map((iconName) => (
+                <TouchableOpacity
+                  key={iconName}
+                  style={[catModal.iconChip, newCategoryIcon === iconName && catModal.iconChipActive]}
+                  onPress={() => setNewCategoryIcon(iconName)}
+                  activeOpacity={0.8}
+                >
+                  <Icon name={iconName} size={18} color={newCategoryIcon === iconName ? '#fff' : ACCENT} />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={catModal.actions}>
+              <TouchableOpacity
+                style={catModal.cancelBtn}
+                onPress={() => { setAddCategoryModalVisible(false); setNewCategoryName(''); setNewCategoryIcon(ICON_OPTIONS[0]); }}
+              >
+                <Text style={catModal.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={catModal.saveBtn} onPress={handleAddCategory}>
+                <Text style={catModal.saveText}>Add Category</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Add Subcategory Modal */}
+      <Modal
+        visible={addSubcategoryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddSubcategoryModalVisible(false)}
+      >
+        <View style={catModal.overlay}>
+          <Animated.View entering={FadeInDown.duration(220)} style={catModal.card}>
+            <Text style={catModal.title}>New Subcategory</Text>
+            <Text style={catModal.subtitle}>Add a subcategory under "{category}"</Text>
+            <TextInput
+              style={catModal.input}
+              placeholder="e.g. Coffee"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={newSubcategoryName}
+              onChangeText={setNewSubcategoryName}
+              autoFocus
+            />
+            <View style={catModal.actions}>
+              <TouchableOpacity
+                style={catModal.cancelBtn}
+                onPress={() => { setAddSubcategoryModalVisible(false); setNewSubcategoryName(''); }}
+              >
+                <Text style={catModal.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={catModal.saveBtn} onPress={handleAddSubcategory}>
+                <Text style={catModal.saveText}>Add Subcategory</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
       <AppPromptModal {...modalProps} />
     </>
   );
@@ -759,6 +1048,14 @@ const styles = StyleSheet.create({
   },
   subcategoryBtnActive: { backgroundColor: ACCENT_DARK, borderColor: ACCENT },
   subcategoryText: { fontSize: RFValue(12), color: ACCENT, fontWeight: '600' },
+
+  addChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 20, paddingVertical: 9, paddingHorizontal: 14,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)', borderStyle: 'dashed',
+  },
+  addChipText: { marginLeft: 6, fontSize: RFValue(12), color: 'rgba(255,255,255,0.55)', fontWeight: '700' },
 
   dateTimeRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   dateBtn: {
@@ -912,6 +1209,30 @@ const modal = StyleSheet.create({
   cancelText: { fontSize: RFValue(13), color: 'rgba(255,255,255,0.4)', fontWeight: '600' },
   addBtn: { flex: 1, paddingVertical: 16, alignItems: 'center', backgroundColor: ACCENT_DARK, flexDirection: 'row', justifyContent: 'center' },
   addText: { fontSize: RFValue(13), color: '#fff', fontWeight: '700', marginLeft: 6 },
+});
+
+const catModal = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 22 },
+  card: { width: '100%', maxWidth: 380, backgroundColor: '#0D1F2D', borderRadius: 22, padding: 20, borderWidth: 1, borderColor: 'rgba(255,107,107,0.2)' },
+  title: { fontSize: RFValue(16), fontWeight: '800', color: '#fff', marginBottom: 4 },
+  subtitle: { fontSize: RFValue(11), color: 'rgba(255,255,255,0.4)', marginBottom: 16 },
+  input: {
+    borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.25)', borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: RFValue(14),
+    color: '#fff', backgroundColor: 'rgba(255,255,255,0.05)', marginBottom: 14,
+  },
+  iconLabel: { fontSize: RFValue(11), fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 },
+  iconGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 18 },
+  iconChip: {
+    width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,107,107,0.06)', borderWidth: 1.5, borderColor: 'rgba(255,107,107,0.18)',
+  },
+  iconChipActive: { backgroundColor: ACCENT_DARK, borderColor: ACCENT },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  cancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
+  cancelText: { fontSize: RFValue(13), fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
+  saveBtn: { flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: 'center', backgroundColor: ACCENT_DARK },
+  saveText: { fontSize: RFValue(13), fontWeight: '700', color: '#fff' },
 });
 
 export default CashOutForm;
