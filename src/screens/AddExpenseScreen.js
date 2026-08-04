@@ -16,6 +16,7 @@ import CashInForm from './CashInForm';
 import InteractiveCard from '../components/InteractiveCard';
 import AppPromptModal from '../components/AppPromptModal';
 import useAppModal from '../hooks/useAppModal';
+import { useTransactions } from '../context/TransactionContext';
 
 const initialLayout = { width: Dimensions.get('window').width };
 
@@ -26,8 +27,15 @@ const AddExpenseScreen = (screenProps) => {
     { key: 'cashIn',  title: 'Cash In'  },
   ]);
   const { showModal, modalProps } = useAppModal();
+  const { statisticsCashbookIds, statisticsCashbookNames, isStatisticsSelectionActive } = useTransactions();
 
   const initialTab = screenProps.route?.params?.initialTab || 0;
+  const routeCashbookId = screenProps.route?.params?.cashbookId || null;
+  const routeCashbookName = screenProps.route?.params?.cashbookName || null;
+  const isSingleStatisticsCashbook = isStatisticsSelectionActive && statisticsCashbookIds.length === 1;
+  const isAddDisabled = !routeCashbookId && isStatisticsSelectionActive && !isSingleStatisticsCashbook;
+  const activeCashbookId = routeCashbookId || (isSingleStatisticsCashbook ? statisticsCashbookIds[0] : null);
+  const cashbookName = routeCashbookName || (isSingleStatisticsCashbook ? statisticsCashbookNames[0] : null);
   const tabWidth = initialLayout.width / routes.length;
   const indicatorX = useSharedValue(initialTab * tabWidth);
 
@@ -40,10 +48,17 @@ const AddExpenseScreen = (screenProps) => {
       const user = auth().currentUser;
       if (!user) { showModal({ type: 'error', title: 'Error', message: 'You must be logged in to add expenses.' }); return; }
       const now = new Date();
-      await firestore().collection('users').doc(user.uid).collection('expenses').add({
+      const expense = {
         amount: 40, category: 'Food', subcategory: 'Breakfast',
         note: 'Auto-added breakfast expense', date: now, createdAt: now,
-      });
+      };
+      if (activeCashbookId) {
+        const cashbookRef = firestore().collection('users').doc(user.uid).collection('cashbooks').doc(activeCashbookId);
+        await cashbookRef.collection('transactions').add({ ...expense, type: 'expense', cashbookId: activeCashbookId });
+        await cashbookRef.set({ updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
+      } else {
+        await firestore().collection('users').doc(user.uid).collection('expenses').add(expense);
+      }
       showModal({ type: 'success', title: 'Success', message: 'Breakfast expense (\u20B940) added successfully!' });
     } catch (error) {
       console.log('Error adding breakfast expense:', error);
@@ -75,7 +90,7 @@ const AddExpenseScreen = (screenProps) => {
   };
 
   useEffect(() => { setIndex(initialTab === 1 ? 1 : 0); }, [initialTab]);
-  useEffect(() => { checkBreakfastReminder(); }, []);
+  useEffect(() => { if (!isAddDisabled) checkBreakfastReminder(); }, [isAddDisabled]);
   useEffect(() => {
     indicatorX.value = withTiming(index * tabWidth, { duration: 260, easing: Easing.out(Easing.cubic) });
   }, [index, tabWidth, indicatorX]);
@@ -89,6 +104,16 @@ const AddExpenseScreen = (screenProps) => {
         <LinearGradient colors={['#050D1A', '#071828', '#0A2535']} style={StyleSheet.absoluteFill} />
 
         <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'left']}>
+          {isAddDisabled ? (
+            <View style={[styles.cashbookBanner, styles.cashbookBannerDisabled]}>
+              <Text style={styles.cashbookBannerDisabledText}>Select one CashBook in Statistics to add a transaction.</Text>
+            </View>
+          ) : cashbookName ? (
+            <View style={styles.cashbookBanner}>
+              <Text style={styles.cashbookBannerText}>CashBook: {cashbookName}</Text>
+            </View>
+          ) : null}
+
           <Animated.View entering={FadeInUp.duration(260)} style={styles.tabViewWrap}>
             <TabView
               navigationState={{ index, routes }}
@@ -154,6 +179,14 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#050D1A' },
   safeArea: { flex: 1 },
   tabViewWrap: { flex: 1 },
+  cashbookBanner: {
+    marginHorizontal: 16, marginTop: 12, paddingVertical: 8, paddingHorizontal: 14,
+    borderRadius: 12, backgroundColor: 'rgba(0,201,167,0.1)',
+    borderWidth: 1, borderColor: 'rgba(0,201,167,0.28)',
+  },
+  cashbookBannerText: { color: '#00C9A7', fontSize: 12, fontWeight: '700' },
+  cashbookBannerDisabled: { backgroundColor: 'rgba(255,107,107,0.1)', borderColor: 'rgba(255,107,107,0.28)' },
+  cashbookBannerDisabledText: { color: '#FF8A80', fontSize: 12, fontWeight: '700' },
 
   tabBarOuter: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   tabBarContainer: {

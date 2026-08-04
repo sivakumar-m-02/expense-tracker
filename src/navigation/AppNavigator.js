@@ -21,6 +21,7 @@ import LoginScreen from "../screens/Auth/LoginScreen.js";
 import RegisterScreen from "../screens/Auth/RegisterScreen.js";
 import ReceiptScannerScreen from "../screens/ReceiptScannerScreen.js";
 import HomeStack from "./HomeStack.js";
+import CashBookStack from "./CashBookStack.js";
 import { useTransactions } from "../context/TransactionContext.js";
 import { hexToRgba } from "../utils/Utils.js";
 
@@ -47,6 +48,7 @@ const TabIcon = ({ routeName, focused }) => {
 
   const iconMap = {
     Home: focused ? "home" : "home-outline",
+    Statistics: focused ? "bar-chart" : "bar-chart-outline",
     AddExpense: focused ? "add-circle" : "add-circle-outline",
     Reports: focused ? "bar-chart" : "bar-chart-outline",
     Profile: focused ? "person" : "person-outline",
@@ -127,7 +129,11 @@ function BottomTabs() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={HomeStack} />
+      {/* Home tab temporarily disabled for this branch — restore by
+          un-commenting the line below. Do not delete HomeStack or its
+          imports; nothing about Home itself has been changed. */}
+      {/* <Tab.Screen name="Home" component={HomeStack} /> */}
+      <Tab.Screen name="Statistics" component={HomeStack} />
       <Tab.Screen
         name="AddExpense"
         component={AddExpenseScreen}
@@ -190,6 +196,7 @@ function AppNavigator() {
         {isLoggedIn ? (
           <>
             <Stack.Screen name="MainApp" component={BottomTabs} />
+            <Stack.Screen name="CashBooks" component={CashBookStack} />
             <Stack.Screen name="ReceiptScanner" component={ReceiptScannerScreen} />
           </>
         ) : (

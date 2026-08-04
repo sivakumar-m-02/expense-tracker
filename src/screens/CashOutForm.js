@@ -21,7 +21,9 @@ import NetInfo from '@react-native-community/netinfo';
 import InteractiveCard from '../components/InteractiveCard';
 import AppPromptModal from '../components/AppPromptModal';
 import useAppModal from '../hooks/useAppModal';
+import TagInput from '../components/TagInput';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
+import { useTransactions } from '../context/TransactionContext';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import SpeechRecognizer from '../services/SpeechRecognizer';
 
@@ -310,6 +312,7 @@ const CashOutForm = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [note, setNote] = useState('');
+  const [tags, setTags] = useState([]);
   const [aiMode, setAiMode] = useState(false);
   const [parsedExpense, setParsedExpense] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -542,7 +545,28 @@ const CashOutForm = () => {
     navigation.setParams({ scannedData: undefined });
   }, [route.params?.scannedData]);
 
-  const saveExpense = async ({ amount: amt, category: cat, subcategory: sub, note: userNote, expenseDate }) => {
+  const { statisticsCashbookIds, isStatisticsSelectionActive } = useTransactions();
+  const routeCashbookId = route.params?.cashbookId || null;
+  const cashbookId = routeCashbookId || (isStatisticsSelectionActive && statisticsCashbookIds.length === 1 ? statisticsCashbookIds[0] : null);
+  const isCashbookSelectionInvalid = !routeCashbookId && isStatisticsSelectionActive && statisticsCashbookIds.length !== 1;
+
+  const showSaveSuccess = () => {
+    showPrompt({
+      type: 'success',
+      title: 'Success',
+      message: 'Expense added successfully!',
+      buttons: [
+        { text: 'Save & Stay', style: 'secondary' },
+        { text: 'Save', style: 'primary', onPress: () => navigation.goBack() },
+      ],
+    });
+  };
+
+  const saveExpense = async ({ amount: amt, category: cat, subcategory: sub, note: userNote, expenseDate, tags: txTags }) => {
+    if (isCashbookSelectionInvalid) {
+      showPrompt({ type: 'warning', title: 'Select One CashBook', message: 'Choose a single CashBook in Statistics before adding a transaction.' });
+      return false;
+    }
     const user = auth().currentUser;
     if (!user) { showPrompt({ type: 'error', title: 'Error', message: 'You must be logged in.' }); return false; }
 
@@ -551,9 +575,30 @@ const CashOutForm = () => {
       category: cat,
       subcategory: sub || null,
       note: userNote || null,
+      tags: Array.isArray(txTags) ? txTags.slice(0, 2) : [],
       date: expenseDate || new Date(),
       createdAt: new Date(),
     };
+
+    // CashBook-scoped expenses are written to that cashbook's own transactions
+    // subcollection so they never mix with another cashbook's data, and are
+    // tagged with type/cashbookId to match the Cash In side.
+    if (cashbookId) {
+      try {
+        const cashbookRef = firestore().collection('users').doc(user.uid).collection('cashbooks').doc(cashbookId);
+        await cashbookRef.collection('transactions').add({
+          ...expensePayload,
+          type: 'expense',
+          cashbookId,
+        });
+        cashbookRef.set({ updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {});
+        return true;
+      } catch (error) {
+        console.log('CashOutForm saveExpense (cashbook) error:', error);
+        showPrompt({ type: 'error', title: 'Save Failed', message: 'Unable to save the expense. Please try again later.' });
+        return false;
+      }
+    }
 
     try {
       const connection = await NetInfo.fetch();
@@ -583,7 +628,7 @@ const CashOutForm = () => {
   };
 
   const resetManualForm = () => {
-    setAmount(''); setCategory(categories[0]?.label || DEFAULT_CATEGORIES[0].label); setSubcategory(''); setNote(''); setDate(new Date());
+    setAmount(''); setCategory(categories[0]?.label || DEFAULT_CATEGORIES[0].label); setSubcategory(''); setNote(''); setTags([]); setDate(new Date());
   };
 
   const handleSave = async () => {
@@ -592,8 +637,8 @@ const CashOutForm = () => {
       return;
     }
     try {
-      const ok = await saveExpense({ amount, category, subcategory, note, expenseDate: date });
-      if (ok) { resetManualForm(); showPrompt({ type: 'success', title: 'Success', message: 'Expense added successfully!' }); }
+      const ok = await saveExpense({ amount, category, subcategory, note, expenseDate: date, tags });
+      if (ok) { resetManualForm(); showSaveSuccess(); }
     } catch { showPrompt({ type: 'error', title: 'Error', message: 'Failed to save expense.' }); }
   };
 
@@ -608,7 +653,7 @@ const CashOutForm = () => {
       });
       if (ok) {
         setShowModal(false); setParsedExpense(null); setAiMode(false);
-        showPrompt({ type: 'success', title: 'Success', message: 'Expense added successfully!' });
+        showSaveSuccess();
       }
     } catch { showPrompt({ type: 'error', title: 'Error', message: 'Failed to save expense.' }); }
     finally { setSaving(false); }
@@ -835,6 +880,11 @@ const CashOutForm = () => {
             multiline
             height={64}
           />
+
+          <Text style={[styles.fieldLabel, { marginTop: 18 }]}>
+            <Icon name="pricetags-outline" size={13} color={ACCENT} />{'  '}Tags
+          </Text>
+          <TagInput tags={tags} onChange={setTags} accentColor={ACCENT} maxTags={2} />
         </Animated.View>
 
         <Animated.View entering={FadeInUp.duration(320).delay(180)}>

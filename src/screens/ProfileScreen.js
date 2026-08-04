@@ -174,15 +174,28 @@ const ProfileScreen = () => {
   }, []);
 
   const handleSaveApiKey = async () => {
-    if (adminPassword !== 'sk') {
-      showModal({ type: 'error', title: 'Access Denied', message: 'Invalid admin password' });
+    if (adminPassword.trim().toUpperCase() !== 'VERIFY') {
+      showModal({
+        type: 'error',
+        title: 'Verification Failed',
+        message: 'Please type "VERIFY" to continue.'
+      });
       return;
     }
+
     await AsyncStorage.setItem('GEMINI_API_KEY', apiInput);
-    setApiKey(apiInput); setApiInput(''); setAdminPassword('');
+    setApiKey(apiInput);
+    setApiInput('');
+    setAdminPassword('');
     setAdminModalVisible(false);
-    showModal({ type: 'success', title: 'API Key Saved', message: 'Your API key is stored securely.' });
+
+    showModal({
+      type: 'success',
+      title: 'API Key Saved',
+      message: 'Your API key is stored securely.'
+    });
   };
+
 
   const getInitials = (name) => {
     if (!name) return 'U';
@@ -252,12 +265,12 @@ const ProfileScreen = () => {
               <Text style={styles.userName}>{user?.displayName || 'No Name'}</Text>
               <Text style={styles.userEmail}>{user?.email || 'No email'}</Text>
 
-              <View style={styles.statRow}>
+              {/* <View style={styles.statRow}>
                 <View style={styles.statPill}>
                   <Text style={styles.statValue}>{RUPEE} {budget || 0}</Text>
                   <Text style={styles.statLabel}>Budget</Text>
                 </View>
-              </View>
+              </View> */}
             </LinearGradient>
           </Animated.View>
 
@@ -273,7 +286,7 @@ const ProfileScreen = () => {
               <Text style={styles.infoText} numberOfLines={1}>{user?.email || 'Not available'}</Text>
             </InfoCard>
 
-            <InfoCard icon="wallet-outline" delay={200}>
+            {/* <InfoCard icon="wallet-outline" delay={200}>
               {!editMode ? (
                 <View style={styles.budgetRow}>
                   <Text style={styles.infoText}>Budget: <Text style={{ color: '#00C9A7', fontWeight: '800' }}>{RUPEE} {budget || 0}</Text></Text>
@@ -299,7 +312,7 @@ const ProfileScreen = () => {
                   </TouchableOpacity>
                 </View>
               )}
-            </InfoCard>
+            </InfoCard> */}
 
             <InfoCard icon="color-palette-outline" delay={260}>
               <TouchableOpacity style={styles.colorRow} onPress={() => setColorModalVisible(true)}>
@@ -356,18 +369,59 @@ const ProfileScreen = () => {
           <Modal visible transparent animationType="fade">
             <View style={styles.modalOverlay}>
               <View style={styles.modalContainer}>
-                <Text style={styles.modalTitle}>Admin Verification</Text>
-                <TextInput value={adminPassword} onChangeText={setAdminPassword} placeholder="Enter Admin Password" secureTextEntry style={styles.modalInput} placeholderTextColor="rgba(255,255,255,0.3)" />
-                <TouchableOpacity onPress={handleSaveApiKey} style={styles.modalPrimaryBtn}>
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: RFValue(14) }}>Verify & Save</Text>
+                <Text style={styles.modalTitle}>Human Verification</Text>
+
+                <Text
+                  style={{
+                    color: 'rgba(255,255,255,0.7)',
+                    textAlign: 'center',
+                    marginBottom: 12,
+                  }}
+                >
+                  Type <Text style={{ fontWeight: '700', color: '#fff' }}>VERIFY</Text> to confirm.
+                </Text>
+
+                <TextInput
+                  value={adminPassword}
+                  onChangeText={setAdminPassword}
+                  placeholder='Type "VERIFY"'
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  style={styles.modalInput}
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                />
+
+                <TouchableOpacity
+                  onPress={handleSaveApiKey}
+                  style={styles.modalPrimaryBtn}
+                >
+                  <Text
+                    style={{
+                      color: '#fff',
+                      fontWeight: '700',
+                      fontSize: RFValue(14),
+                    }}
+                  >
+                    Submit
+                  </Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { setAdminModalVisible(false); setAdminPassword(''); }} style={{ marginTop: 10, alignItems: 'center' }}>
-                  <Text style={{ color: '#FF6B6B', fontWeight: '600' }}>Cancel</Text>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setAdminModalVisible(false);
+                    setAdminPassword('');
+                  }}
+                  style={{ marginTop: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#FF6B6B', fontWeight: '600' }}>
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
           </Modal>
         )}
+
 
         {previewVisible && (
           <Modal transparent animationType="fade">

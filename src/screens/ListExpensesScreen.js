@@ -13,6 +13,7 @@ import moment from "moment";
 import LinearGradient from "react-native-linear-gradient";
 import { StatusBar } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRoute } from "@react-navigation/native";
 import AppPromptModal from "../components/AppPromptModal";
 import useAppModal from "../hooks/useAppModal";
 
@@ -20,6 +21,16 @@ const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct"
 
 const ListExpensesScreen = () => {
   const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions, removeLocalPendingExpense } = useTransactions();
+  const route = useRoute();
+  const cashbookIds = useMemo(
+    () => (Array.isArray(route.params?.cashbookIds) ? route.params.cashbookIds : []),
+    [route.params?.cashbookIds]
+  );
+  const isCashbookMode = route.params?.cashbookScope === true || cashbookIds.length > 0;
+  const cashbookIdsKey = cashbookIds.join(',');
+  const [cashbookExpenses, setCashbookExpenses] = useState([]);
+  const [cashbookIncomes, setCashbookIncomes] = useState([]);
+  const [cashbookLoading, setCashbookLoading] = useState(false);
 
   const [showToast, setShowToast] = useState(true);
   const toastAnim = useRef(new Animated.Value(80)).current;
@@ -43,6 +54,42 @@ const ListExpensesScreen = () => {
   const searchInputRef = useRef(null);
   const searchBarAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (!isCashbookMode) return undefined;
+    let cancelled = false;
+
+    const loadCashbookTransactions = async () => {
+      setCashbookLoading(true);
+      try {
+        const user = auth().currentUser;
+        if (!user) {
+          if (!cancelled) setCashbookLoading(false);
+          return;
+        }
+        const snapshots = await Promise.all(cashbookIds.map(id =>
+          firestore().collection('users').doc(user.uid).collection('cashbooks').doc(id).collection('transactions').get()
+        ));
+        const nextExpenses = [];
+        const nextIncomes = [];
+        snapshots.forEach(snapshot => snapshot.forEach(doc => {
+          const transaction = { id: doc.id, ...doc.data(), cashbookId: doc.data().cashbookId || doc.ref.parent.parent.id };
+          if (transaction.type === 'income') nextIncomes.push(transaction);
+          else nextExpenses.push(transaction);
+        }));
+        if (!cancelled) {
+          setCashbookExpenses(nextExpenses);
+          setCashbookIncomes(nextIncomes);
+        }
+      } catch (error) {
+        console.log('ListExpensesScreen cashbook transactions error:', error);
+      }
+      if (!cancelled) setCashbookLoading(false);
+    };
+
+    loadCashbookTransactions();
+    return () => { cancelled = true; };
+  }, [cashbookIds, cashbookIdsKey, isCashbookMode]);
 
   // ── Date filter state ──────────────────────────────────────────────────────
   const [dateFilterModal, setDateFilterModal] = useState(false);
@@ -85,13 +132,15 @@ const ListExpensesScreen = () => {
       const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
       return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
     });
-    const all = [...filterMonth(expenses), ...filterMonth(incomes)].sort((a, b) => {
+    const sourceExpenses = isCashbookMode ? cashbookExpenses : expenses;
+    const sourceIncomes = isCashbookMode ? cashbookIncomes : incomes;
+    const all = [...filterMonth(sourceExpenses), ...filterMonth(sourceIncomes)].sort((a, b) => {
       const da = new Date(a.date?.seconds ? a.date.seconds * 1000 : a.date);
       const db = new Date(b.date?.seconds ? b.date.seconds * 1000 : b.date);
       return db - da;
     });
-    return { allTransactions: all, loading: expenses.length === 0 && incomes.length === 0 };
-  }, [expenses, incomes, selectedMonth, selectedYear]);
+    return { allTransactions: all, loading: isCashbookMode ? cashbookLoading : expenses.length === 0 && incomes.length === 0 };
+  }, [cashbookExpenses, cashbookIncomes, cashbookLoading, expenses, incomes, isCashbookMode, selectedMonth, selectedYear]);
 
   // Apply both search + date filter
   const filteredTransactions = useMemo(() => {
@@ -154,8 +203,14 @@ const ListExpensesScreen = () => {
 
       const user = auth().currentUser;
       if (!user) return;
-      await firestore().collection("users").doc(user.uid)
-        .collection(item.type === "expense" ? "expenses" : "income").doc(item.id).delete();
+      const ref = isCashbookMode
+        ? firestore().collection('users').doc(user.uid).collection('cashbooks').doc(item.cashbookId).collection('transactions').doc(item.id)
+        : firestore().collection("users").doc(user.uid).collection(item.type === "expense" ? "expenses" : "income").doc(item.id);
+      await ref.delete();
+      if (isCashbookMode) {
+        await firestore().collection('users').doc(user.uid).collection('cashbooks').doc(item.cashbookId)
+          .set({ updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }
     } catch (error) {
       console.log("Error deleting:", error);
       showPrompt({ type: 'error', title: 'Delete Failed', message: 'Unable to delete the expense. Please try again.' });
@@ -197,11 +252,16 @@ const ListExpensesScreen = () => {
     try {
       const user = auth().currentUser;
       if (!user) return;
-      const ref = firestore().collection("users").doc(user.uid)
-        .collection(editItem.type === "expense" ? "expenses" : "income").doc(editItem.id);
+      const ref = isCashbookMode
+        ? firestore().collection('users').doc(user.uid).collection('cashbooks').doc(editItem.cashbookId).collection('transactions').doc(editItem.id)
+        : firestore().collection("users").doc(user.uid).collection(editItem.type === "expense" ? "expenses" : "income").doc(editItem.id);
       const updateData = { amount: Number(editAmount), note: editNote };
       if (editItem.category === "Food") updateData.subcategory = editSubcategory;
       await ref.update(updateData);
+      if (isCashbookMode) {
+        await firestore().collection('users').doc(user.uid).collection('cashbooks').doc(editItem.cashbookId)
+          .set({ updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }
       setEditModalVisible(false); setEditItem(null);
     } catch (error) { console.log("Error editing:", error); }
     setEditLoading(false);

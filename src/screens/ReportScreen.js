@@ -1,20 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, Dimensions,
   TouchableOpacity, ScrollView, StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
 import { LineChart } from "react-native-chart-kit";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { RFValue } from "react-native-responsive-fontsize";
 import LottieView from "lottie-react-native";
 import LinearGradient from "react-native-linear-gradient";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+import firestore from "@react-native-firebase/firestore";
+import auth from "@react-native-firebase/auth";
 import { useTransactions } from "../context/TransactionContext";
 import BudgetProgress from "../components/BudgetProgress";
 import AISummaryCard from "../components/AISummaryCard";
 import InteractiveCard from "../components/InteractiveCard";
 import LottieLoader from "../components/LottieLoader";
+import TopCategoriesSection from "../components/TopCategoriesSection";
 
 const RUPEE = "\u20B9";
 const screenWidth = Dimensions.get("window").width;
@@ -33,10 +37,133 @@ const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
 
 export default function ReportScreen() {
   const {
-    expenses = [], incomes = [], loading,
     selectedMonth, selectedYear, budget,
     primaryColor = "#37474F",
+    statisticsCashbookIds,
+    statisticsCashbookNames,
+    isStatisticsSelectionActive,
   } = useTransactions();
+
+  const navigation = useNavigation();
+  const route = useRoute();
+  const routeSource = route.params?.source;
+  const routeCashbookIds = Array.isArray(route.params?.cashbookIds) ? route.params.cashbookIds : [];
+  const routeCashbookNames = Array.isArray(route.params?.cashbookNames) ? route.params.cashbookNames : [];
+  const routeCashbookIdsKey = useMemo(() => routeCashbookIds.join(","), [routeCashbookIds]);
+  const routeCashbookNamesKey = useMemo(() => routeCashbookNames.join(","), [routeCashbookNames]);
+
+  const [activeCashbookIds, setActiveCashbookIds] = useState([]);
+  const [activeCashbookNames, setActiveCashbookNames] = useState([]);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [reportExpenses, setReportExpenses] = useState([]);
+  const [reportIncomes, setReportIncomes] = useState([]);
+  const [reportLoading, setReportLoading] = useState(true);
+  const activeCashbookIdsKey = useMemo(() => activeCashbookIds.join(","), [activeCashbookIds]);
+  const isCashbookMode = activeCashbookIds.length > 0;
+  useEffect(() => {
+    if (routeSource === "cashbook" && routeCashbookIds.length > 0) {
+      setActiveCashbookIds(routeCashbookIds);
+      setActiveCashbookNames(routeCashbookNames);
+    } else if (isStatisticsSelectionActive) {
+      setActiveCashbookIds(statisticsCashbookIds);
+      setActiveCashbookNames(statisticsCashbookNames);
+    } else {
+      setActiveCashbookIds([]);
+      setActiveCashbookNames([]);
+    }
+  }, [
+    isStatisticsSelectionActive,
+    routeSource,
+    routeCashbookIdsKey,
+    routeCashbookNamesKey,
+    statisticsCashbookIds,
+    statisticsCashbookNames,
+  ]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      const loadReportData = async () => {
+        setReportLoading(true);
+        try {
+          const user = auth().currentUser;
+          if (!user) {
+            if (!cancelled) {
+              setReportExpenses([]);
+              setReportIncomes([]);
+            }
+            return;
+          }
+
+          const targetCashbookIds = isCashbookMode ? activeCashbookIds : [];
+          let snapshots = [];
+
+          if (isCashbookMode) {
+            snapshots = await Promise.all(
+              targetCashbookIds.map((id) =>
+                firestore()
+                  .collection("users")
+                  .doc(user.uid)
+                  .collection("cashbooks")
+                  .doc(id)
+                  .collection("transactions")
+                  .get()
+              )
+            );
+          } else {
+            const cashbooksSnap = await firestore()
+              .collection("users")
+              .doc(user.uid)
+              .collection("cashbooks")
+              .get();
+
+            const allCashbookIds = cashbooksSnap.docs.map((doc) => doc.id);
+            snapshots = await Promise.all(
+              allCashbookIds.map((id) =>
+                firestore()
+                  .collection("users")
+                  .doc(user.uid)
+                  .collection("cashbooks")
+                  .doc(id)
+                  .collection("transactions")
+                  .get()
+              )
+            );
+          }
+
+          const exp = [];
+          const inc = [];
+          snapshots.forEach((qs) => {
+            qs.forEach((doc) => {
+              const data = { id: doc.id, ...doc.data() };
+              if (data.type === "income") inc.push(data);
+              else exp.push(data);
+            });
+          });
+
+          if (!cancelled) {
+            setReportExpenses(exp);
+            setReportIncomes(inc);
+          }
+        } catch (e) {
+          console.log("ReportScreen aggregate error:", e);
+        }
+
+        if (!cancelled) setReportLoading(false);
+      };
+
+      loadReportData();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [activeCashbookIdsKey, isCashbookMode, refreshTick])
+  );
+
+  const expenses = reportExpenses;
+  const incomes = reportIncomes;
+  const loading = reportLoading;
 
   const [clickedData, setClickedData] = useState(null);
 
@@ -84,6 +211,23 @@ export default function ReportScreen() {
     propsForBackgroundLines: { strokeDasharray: "4 6", stroke: "rgba(255,255,255,0.06)" },
   };
 
+  const subtitleText = new Date(selectedYear, selectedMonth, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+  const selectedCashbooksText = activeCashbookNames.length
+    ? activeCashbookNames.join(", ")
+    : isCashbookMode ? `${activeCashbookIds.length} CashBooks` : null;
+  const headerSubtitle = selectedCashbooksText ? "Selected CashBooks" : "This month";
+
+  const handleRefresh = useCallback(() => {
+    navigation.setParams({
+      source: undefined,
+      cashbookIds: undefined,
+      cashbookNames: undefined,
+    });
+    setActiveCashbookIds([]);
+    setActiveCashbookNames([]);
+    setRefreshTick((value) => value + 1);
+  }, [navigation]);
+
   if (loading) {
     return (
       <LinearGradient colors={["#050D1A", "#071828", "#0A2535"]} style={[styles.container, styles.center]}>
@@ -100,48 +244,64 @@ export default function ReportScreen() {
       <SafeAreaView style={styles.safe} edges={["top", "right", "left"]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-          {/* ── Header ── */}
+          {/* ── Header: title + refresh (top-right) ── */}
           <Animated.View entering={FadeInUp.duration(280)}>
-            <View style={styles.headerRow}>
-              <View>
+            <View style={styles.headerTopRow}>
+              <View style={styles.headerTitleBlock}>
                 <Text style={styles.header}>Monthly Trend</Text>
-                <Text style={styles.subheader}>
-                  {new Date(selectedYear, selectedMonth, 1).toLocaleString("en-US", { month: "long", year: "numeric" })}
-                </Text>
+                <Text style={styles.subheader}>{headerSubtitle}</Text>
+                {selectedCashbooksText ? (
+                  <Text style={styles.cashbookSubtitle} numberOfLines={1}>{selectedCashbooksText}</Text>
+                ) : (
+                  <Text style={styles.monthSubtitle}>{subtitleText}</Text>
+                )}
               </View>
-              <LinearGradient
-                colors={isNetPositive ? ["rgba(29,233,182,0.15)", "rgba(29,233,182,0.05)"] : ["rgba(255,107,107,0.15)", "rgba(255,107,107,0.05)"]}
-                style={[styles.netPill, { borderColor: isNetPositive ? "rgba(29,233,182,0.3)" : "rgba(255,107,107,0.3)" }]}
-              >
-                <Ionicons name={isNetPositive ? "trending-up" : "trending-down"} size={14} color={isNetPositive ? "#1DE9B6" : "#FF6B6B"} />
-                <Text style={[styles.netText, { color: isNetPositive ? "#1DE9B6" : "#FF6B6B" }]}>
-                  {isNetPositive ? "Surplus" : "Deficit"} {RUPEE} {Math.abs(net).toFixed(0)}
-                </Text>
-              </LinearGradient>
+              <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} activeOpacity={0.85}>
+                <LinearGradient
+                  colors={["rgba(0,201,167,0.24)", "rgba(0,201,167,0.08)"]}
+                  style={styles.refreshButtonInner}
+                >
+                  <Ionicons name="refresh-outline" style={{paddingLeft: RFValue(2)}} size={18} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
           </Animated.View>
 
-          {/* ── Summary cards ── */}
+          {/* ── Summary cards: Income / Expense / Surplus-Deficit, one compact row ── */}
           <View style={styles.summaryRow}>
             <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(280).delay(50)}>
               <InteractiveCard style={styles.summaryCard}>
                 <LinearGradient colors={["rgba(29,233,182,0.2)", "rgba(29,233,182,0.05)"]} style={styles.summaryGrad}>
-                  <Ionicons name="cash-outline" size={20} color="#1DE9B6" />
-                  <View style={styles.summaryTextWrap}>
-                    <Text style={styles.summaryLabel}>Income</Text>
-                    <Text style={[styles.summaryValue, { color: "#1DE9B6" }]}>{RUPEE} {totalIncome.toFixed(0)}</Text>
+                  <View style={styles.summaryHeaderRow}>
+                    <Ionicons name="cash-outline" size={13} color="#1DE9B6" />
+                    <Text style={styles.summaryLabel} numberOfLines={1}>Income</Text>
                   </View>
+                  <Text style={[styles.summaryValue, { color: "#1DE9B6" }]} numberOfLines={1}>{RUPEE} {totalIncome.toFixed(0)}</Text>
                 </LinearGradient>
               </InteractiveCard>
             </Animated.View>
-            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(280).delay(100)}>
+            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(280).delay(90)}>
               <InteractiveCard style={styles.summaryCard}>
                 <LinearGradient colors={["rgba(255,107,107,0.2)", "rgba(255,107,107,0.05)"]} style={styles.summaryGrad}>
-                  <Ionicons name="card-outline" size={20} color="#FF6B6B" />
-                  <View style={styles.summaryTextWrap}>
-                    <Text style={styles.summaryLabel}>Expense</Text>
-                    <Text style={[styles.summaryValue, { color: "#FF6B6B" }]}>{RUPEE} {totalExpense.toFixed(0)}</Text>
+                  <View style={styles.summaryHeaderRow}>
+                    <Ionicons name="card-outline" size={13} color="#FF6B6B" />
+                    <Text style={styles.summaryLabel} numberOfLines={1}>Expense</Text>
                   </View>
+                  <Text style={[styles.summaryValue, { color: "#FF6B6B" }]} numberOfLines={1}>{RUPEE} {totalExpense.toFixed(0)}</Text>
+                </LinearGradient>
+              </InteractiveCard>
+            </Animated.View>
+            <Animated.View style={{ flex: 1 }} entering={FadeInUp.duration(280).delay(130)}>
+              <InteractiveCard style={styles.summaryCard}>
+                <LinearGradient
+                  colors={isNetPositive ? ["rgba(29,233,182,0.2)", "rgba(29,233,182,0.05)"] : ["rgba(255,107,107,0.2)", "rgba(255,107,107,0.05)"]}
+                  style={styles.summaryGrad}
+                >
+                  <View style={styles.summaryHeaderRow}>
+                    <Ionicons name={isNetPositive ? "trending-up" : "trending-down"} size={13} color={isNetPositive ? "#1DE9B6" : "#FF6B6B"} />
+                    <Text style={styles.summaryLabel} numberOfLines={1}>{isNetPositive ? "Surplus" : "Deficit"}</Text>
+                  </View>
+                  <Text style={[styles.summaryValue, { color: isNetPositive ? "#1DE9B6" : "#FF6B6B" }]} numberOfLines={1}>{RUPEE} {Math.abs(net).toFixed(0)}</Text>
                 </LinearGradient>
               </InteractiveCard>
             </Animated.View>
@@ -222,7 +382,14 @@ export default function ReportScreen() {
           </Animated.View>
 
           <Animated.View entering={FadeInUp.duration(300).delay(180)}>
-            <BudgetProgress spent={Math.abs(net).toFixed(0)} budget={budget} primaryColor={primaryColor} />
+            {/* MonthlyProgress (BudgetProgress) temporarily disabled for this
+                branch — kept in place, not removed, so it can be restored
+                later by uncommenting. */}
+            {/* <BudgetProgress spent={Math.abs(net).toFixed(0)} budget={budget} primaryColor={primaryColor} /> */}
+          </Animated.View>
+
+          <Animated.View entering={FadeInUp.duration(300).delay(200)}>
+            <TopCategoriesSection monthExpenses={monthExpenses} subtitle={isCashbookMode ? "Selected Transactions" : "This month"} />
           </Animated.View>
 
           <Animated.View entering={FadeInUp.duration(300).delay(220)}>
@@ -247,19 +414,41 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: H_PADDING, paddingTop: 14, paddingBottom: 110 },
   center: { justifyContent: "center", alignItems: "center" },
 
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  headerTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
+  headerTitleBlock: { flex: 1, paddingRight: 12 },
   header: { fontSize: RFValue(20), fontWeight: "800", color: "#fff" },
   subheader: { fontSize: RFValue(12), color: "rgba(255,255,255,0.4)", marginTop: 3 },
+  monthSubtitle: { fontSize: RFValue(10.5), color: "rgba(255,255,255,0.35)", marginTop: 2 },
+  cashbookSubtitle: { fontSize: RFValue(10.5), color: "rgba(255,255,255,0.35)", marginTop: 2 },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#00C9A7",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  refreshButtonInner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
 
-  netPill: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  netText: { marginLeft: 6, fontWeight: "700", fontSize: RFValue(12) },
 
-  summaryRow: { flexDirection: "row", gap: 10, marginBottom: 14 },
-  summaryCard: { borderRadius: 16, overflow: "hidden" },
-  summaryGrad: { borderRadius: 16, paddingVertical: 14, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
-  summaryTextWrap: { marginLeft: 10 },
-  summaryLabel: { fontSize: RFValue(11), color: "rgba(255,255,255,0.5)", marginBottom: 2 },
-  summaryValue: { fontSize: RFValue(16), fontWeight: "800" },
+  summaryRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
+  summaryCard: { borderRadius: 14, overflow: "hidden" },
+  summaryGrad: { borderRadius: 14, paddingVertical: 10, paddingHorizontal: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
+  summaryHeaderRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 6 },
+  summaryLabel: { fontSize: RFValue(10), color: "rgba(255,255,255,0.5)", flexShrink: 1 },
+  summaryValue: { fontSize: RFValue(13.5), fontWeight: "800" },
 
   cardBlock: { backgroundColor: "#0D1F2D", borderRadius: 20, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },

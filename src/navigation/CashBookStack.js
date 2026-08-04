@@ -1,12 +1,10 @@
 import React from "react";
-import { TouchableOpacity, View, Platform } from "react-native";
+import { TouchableOpacity } from "react-native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
-import StatisticsScreen from "../screens/StatisticsScreen.js";
-import ListExpensesScreen from "../screens/ListExpensesScreen.js";
-import MonthRangeScreen from "../screens/MonthRangeScreen.js";
-import MonthDetailScreen from "../screens/MonthDetailScreen.js";
+import CashBookListScreen from "../screens/CashBook/CashBookListScreen.js";
+import CashBookDetailScreen from "../screens/CashBook/CashBookDetailScreen.js";
 
 const Stack = createNativeStackNavigator();
 
@@ -52,31 +50,23 @@ const sharedScreenOptions = (navigation, title) => ({
   ),
 });
 
-function HomeStack() {
+function CashBookStack() {
   return (
     <Stack.Navigator>
       <Stack.Screen
-        name="HomeMain"
-        component={StatisticsScreen}
+        name="CashBookList"
+        component={CashBookListScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
-        name="ListExpenses"
-        component={ListExpensesScreen}
-        options={({ navigation }) => sharedScreenOptions(navigation, "All Expenses")}
-      />
-      <Stack.Screen
-        name="MonthRange"
-        component={MonthRangeScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="MonthDetail"
-        component={MonthDetailScreen}
-        options={{ headerShown: false }}
+        name="CashBookDetail"
+        component={CashBookDetailScreen}
+        options={({ navigation, route }) =>
+          sharedScreenOptions(navigation, route.params?.cashbookName || "CashBook")
+        }
       />
     </Stack.Navigator>
   );
 }
 
-export default HomeStack;
+export default CashBookStack;

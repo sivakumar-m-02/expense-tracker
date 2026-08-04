@@ -35,6 +35,9 @@ export const TransactionProvider = ({ children }) => {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [statisticsCashbookIds, setStatisticsCashbookIds] = useState([]);
+  const [statisticsCashbookNames, setStatisticsCashbookNames] = useState([]);
+  const [isStatisticsSelectionActive, setIsStatisticsSelectionActive] = useState(false);
 
   useEffect(() => {
     setExpenses(mergeExpenses(remoteExpenses, pendingOfflineExpenses));
@@ -229,6 +232,12 @@ export const TransactionProvider = ({ children }) => {
         setSelectedMonth,
         selectedYear,
         setSelectedYear,
+        statisticsCashbookIds,
+        setStatisticsCashbookIds,
+        statisticsCashbookNames,
+        setStatisticsCashbookNames,
+        isStatisticsSelectionActive,
+        setIsStatisticsSelectionActive,
         refreshTransactions,
         removeLocalPendingExpense,
       }}

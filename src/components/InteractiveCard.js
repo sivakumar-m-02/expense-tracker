@@ -18,6 +18,7 @@ const InteractiveCard = ({
   children,
   style,
   onPress,
+  onLongPress,
   enabled = true,
   pressScale = 0.97,
 }) => {
@@ -35,6 +36,17 @@ const InteractiveCard = ({
       }
     });
 
+  const longPressGesture = Gesture.LongPress()
+    .enabled(enabled)
+    .minDuration(380)
+    .onFinalize((_event, success) => {
+      if (success && onLongPress) {
+        runOnJS(onLongPress)();
+      }
+    });
+
+  const composed = Gesture.Race(longPressGesture, tapGesture);
+
   const animatedStyle = useAnimatedStyle(() => {
     const scale = 1 - progress.value * (1 - pressScale);
     const translateY = -2 * progress.value;
@@ -49,7 +61,7 @@ const InteractiveCard = ({
   }
 
   return (
-    <GestureDetector gesture={tapGesture}>
+    <GestureDetector gesture={composed}>
       <Animated.View style={[styles.base, style, animatedStyle]}>{children}</Animated.View>
     </GestureDetector>
   );
