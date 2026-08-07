@@ -30,8 +30,20 @@ export const TransactionProvider = ({ children }) => {
   const [incomes, setIncomes] = useState([]);
   const [pendingOfflineExpenses, setPendingOfflineExpenses] = useState([]);
   const [error, setError] = useState(null);
-  const [budget, setBudget] = useState(0);
+  const [globalBudget, setGlobalBudget] = useState(0);
+  const [cashbookBudget, setCashbookBudget] = useState(0);
+  const [selectedCashbookId, setSelectedCashbookId] = useState(null);
+  const [selectedCashbookName, setSelectedCashbookName] = useState(null);
   const [primaryColor, setPrimaryColor] = useState("#37474F");
+
+  const budget = selectedCashbookId ? cashbookBudget : globalBudget;
+  const setBudget = useCallback(
+    (val) => {
+      if (selectedCashbookId) setCashbookBudget(val);
+      else setGlobalBudget(val);
+    },
+    [selectedCashbookId]
+  );
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -81,7 +93,13 @@ export const TransactionProvider = ({ children }) => {
       if (!user) {
         setRemoteExpenses([]);
         setIncomes([]);
-        setBudget(0);
+        setGlobalBudget(0);
+        setCashbookBudget(0);
+        setSelectedCashbookId(null);
+        setSelectedCashbookName(null);
+        setStatisticsCashbookIds([]);
+        setStatisticsCashbookNames([]);
+        setIsStatisticsSelectionActive(false);
         setPrimaryColor("#37474F");
         setLoading(false);
         return;
@@ -94,7 +112,7 @@ export const TransactionProvider = ({ children }) => {
       unsubProfile = userRef.onSnapshot(
         (doc) => {
           const data = doc.data();
-          setBudget(data?.budget ?? 0);
+          setGlobalBudget(data?.budget ?? 0);
           setPrimaryColor(data?.primaryColor ?? "#37474F");
         },
         (e) => {
@@ -154,6 +172,27 @@ export const TransactionProvider = ({ children }) => {
       unsubscribeAuth?.();
     };
   }, [syncPendingWhenAvailable]);
+
+  useEffect(() => {
+    const user = auth().currentUser;
+    if (!user || !selectedCashbookId) return undefined;
+
+    return firestore()
+      .collection("users")
+      .doc(user.uid)
+      .collection("cashbooks")
+      .doc(selectedCashbookId)
+      .onSnapshot(
+        (doc) => {
+          const data = doc.data();
+          setCashbookBudget(data?.budget ?? 0);
+          setSelectedCashbookName(data?.name ?? null);
+        },
+        (e) => {
+          console.log("TransactionContext selected cashbook error:", e);
+        }
+      );
+  }, [selectedCashbookId]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -226,6 +265,9 @@ export const TransactionProvider = ({ children }) => {
         error,
         budget,
         setBudget,
+        selectedCashbookId,
+        setSelectedCashbookId,
+        selectedCashbookName,
         primaryColor,
         setPrimaryColor,
         selectedMonth,

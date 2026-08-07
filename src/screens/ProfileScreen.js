@@ -49,7 +49,7 @@ const InfoCard = ({ icon, children, delay = 0 }) => (
 
 const ProfileScreen = () => {
   const user = auth().currentUser;
-  const { budget, setBudget, primaryColor, setPrimaryColor } = useTransactions();
+  const { budget, setBudget, primaryColor, setPrimaryColor, selectedCashbookId, selectedCashbookName } = useTransactions();
   const { showModal, modalProps } = useAppModal();
 
   const [editMode, setEditMode] = useState(false);
@@ -211,7 +211,10 @@ const ProfileScreen = () => {
     }
     setSaving(true);
     try {
-      await firestore().collection('users').doc(user.uid).set({ budget: val }, { merge: true });
+      const targetRef = selectedCashbookId
+        ? firestore().collection('users').doc(user.uid).collection('cashbooks').doc(selectedCashbookId)
+        : firestore().collection('users').doc(user.uid);
+      await targetRef.set({ budget: val }, { merge: true });
       setBudget(val); setEditMode(false);
       showModal({ type: 'success', title: 'Budget Updated', message: 'Your monthly budget has been saved.' });
     } catch {
@@ -286,10 +289,13 @@ const ProfileScreen = () => {
               <Text style={styles.infoText} numberOfLines={1}>{user?.email || 'Not available'}</Text>
             </InfoCard>
 
-            {/* <InfoCard icon="wallet-outline" delay={200}>
+            <InfoCard icon="wallet-outline" delay={200}>
               {!editMode ? (
                 <View style={styles.budgetRow}>
-                  <Text style={styles.infoText}>Budget: <Text style={{ color: '#00C9A7', fontWeight: '800' }}>{RUPEE} {budget || 0}</Text></Text>
+                  <Text style={styles.infoText} numberOfLines={2}>
+                    Budget: <Text style={{ color: '#00C9A7', fontWeight: '800' }}>{RUPEE} {budget || 0}</Text>
+                    {selectedCashbookId ? ` · ${selectedCashbookName || 'CashBook'}` : ''}
+                  </Text>
                   <TouchableOpacity style={styles.editIconBtn} onPress={() => { setEditMode(true); setBudgetInput(String(budget || '')); }}>
                     <Icon name="create-outline" size={16} color="#00C9A7" />
                   </TouchableOpacity>
@@ -312,7 +318,7 @@ const ProfileScreen = () => {
                   </TouchableOpacity>
                 </View>
               )}
-            </InfoCard> */}
+            </InfoCard>
 
             <InfoCard icon="color-palette-outline" delay={260}>
               <TouchableOpacity style={styles.colorRow} onPress={() => setColorModalVisible(true)}>

@@ -76,7 +76,7 @@ const BudgetProgress = ({ spent, budget, primaryColor = "#00C9A7" }) => {
               <Ionicons name="wallet-outline" size={17} color={statusColor} />
             </View>
             <View style={{ marginLeft: 10 }}>
-              <Text style={styles.title}>Monthly Budget</Text>
+              <Text style={styles.title}>CashBook Budget</Text>
               <Text style={[styles.statusLabel, { color: statusColor }]}>
                 {isOverBudget ? "Over Budget" : isWarning ? "Almost Full" : "On Track"}
               </Text>
@@ -129,7 +129,7 @@ const BudgetProgress = ({ spent, budget, primaryColor = "#00C9A7" }) => {
           <View style={styles.overspentRow}>
             <Ionicons name="alert-circle" size={14} color="#FF6B6B" />
             <Text style={styles.overspentText}>
-              Overspent by {RUPEE}{extraSpent.toLocaleString()} this month
+              Overspent by {RUPEE}{extraSpent.toLocaleString()}
             </Text>
           </View>
         )}

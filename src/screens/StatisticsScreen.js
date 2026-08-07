@@ -11,11 +11,14 @@ import {useTransactions} from '../context/TransactionContext';
 const StatisticsScreen = () => {
   const navigation = useNavigation();
   const [cashbooks, setCashbooks] = useState([]);
-  const [selectedCashbookId, setSelectedCashbookId] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [incomes, setIncomes] = useState([]);
   const [loading, setLoading] = useState(true);
   const {
+    selectedCashbookId,
+    setSelectedCashbookId,
+    statisticsCashbookIds,
+    statisticsCashbookNames,
     setStatisticsCashbookIds,
     setStatisticsCashbookNames,
     setIsStatisticsSelectionActive,
@@ -49,21 +52,44 @@ const StatisticsScreen = () => {
     if (selectedCashbookId && !cashbooks.some(cashbook => cashbook.id === selectedCashbookId)) {
       setSelectedCashbookId(null);
     }
-  }, [cashbooks, selectedCashbookId]);
+  }, [cashbooks, selectedCashbookId, setSelectedCashbookId]);
 
+  // Selecting a single CashBook makes it the report scope.
   useEffect(() => {
+    if (!selectedCashbookId) return;
     const selectedCashbook = cashbooks.find(cashbook => cashbook.id === selectedCashbookId);
-    setStatisticsCashbookIds(selectedCashbookId ? [selectedCashbookId] : cashbooks.map(cashbook => cashbook.id));
-    setStatisticsCashbookNames(selectedCashbook ? [selectedCashbook.name] : ['All CashBooks']);
+    setStatisticsCashbookIds([selectedCashbookId]);
+    setStatisticsCashbookNames([selectedCashbook?.name || 'CashBook']);
+    setIsStatisticsSelectionActive(true);
+  }, [
+    selectedCashbookId,
+    cashbooks,
+    setStatisticsCashbookIds,
+    setStatisticsCashbookNames,
+    setIsStatisticsSelectionActive,
+  ]);
+
+  // When no scope has been chosen yet (e.g. first visit), default to all
+  // CashBooks. A scope set elsewhere (e.g. multi-select from the CashBook
+  // list) is preserved.
+  useEffect(() => {
+    if (cashbooks.length === 0 || statisticsCashbookIds.length > 0) return;
+    setStatisticsCashbookIds(cashbooks.map(cashbook => cashbook.id));
+    setStatisticsCashbookNames(['All CashBooks']);
     setIsStatisticsSelectionActive(true);
   }, [
     cashbookIdsKey,
     cashbooks,
-    selectedCashbookId,
-    setIsStatisticsSelectionActive,
+    statisticsCashbookIds.length,
     setStatisticsCashbookIds,
     setStatisticsCashbookNames,
+    setIsStatisticsSelectionActive,
   ]);
+
+  const scopeKey = useMemo(
+    () => statisticsCashbookIds.join(','),
+    [statisticsCashbookIds],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -81,9 +107,7 @@ const StatisticsScreen = () => {
 
       setLoading(true);
       try {
-        const cashbookIds = selectedCashbookId
-          ? [selectedCashbookId]
-          : cashbooks.map(cashbook => cashbook.id);
+        const cashbookIds = statisticsCashbookIds;
         const snapshots = await Promise.all(
           cashbookIds.map(id =>
             firestore()
@@ -125,18 +149,36 @@ const StatisticsScreen = () => {
     return () => {
       cancelled = true;
     };
-  }, [cashbookIdsKey, cashbooks, selectedCashbookId]);
+  }, [scopeKey, statisticsCashbookIds]);
 
-  const cashbookOptions = useMemo(
-    () => [
-      {label: 'All CashBooks', value: 'all'},
-      ...cashbooks.map(cashbook => ({
-        label: cashbook.name || 'Untitled CashBook',
-        value: cashbook.id,
-      })),
-    ],
-    [cashbooks],
-  );
+  const scopeAll = statisticsCashbookIds.length > 0
+    && cashbooks.length > 0
+    && statisticsCashbookIds.length === cashbooks.length;
+  const isMultiScope = !selectedCashbookId && statisticsCashbookIds.length > 1 && !scopeAll;
+
+  const cashbookOptions = useMemo(() => {
+    const options = [{label: 'All CashBooks', value: 'all'}];
+    if (isMultiScope) {
+      options.push({label: `${statisticsCashbookIds.length} CashBooks`, value: '__multi__'});
+    }
+    cashbooks.forEach(cashbook => {
+      options.push({label: cashbook.name || 'Untitled CashBook', value: cashbook.id});
+    });
+    return options;
+  }, [cashbooks, isMultiScope, statisticsCashbookIds.length]);
+
+  const dropdownValue = selectedCashbookId ? selectedCashbookId : (isMultiScope ? '__multi__' : 'all');
+
+  const handleCashbookChange = (value) => {
+    if (value === 'all') {
+      setSelectedCashbookId(null);
+      setStatisticsCashbookIds(cashbooks.map(cashbook => cashbook.id));
+      setStatisticsCashbookNames(['All CashBooks']);
+      setIsStatisticsSelectionActive(true);
+    } else if (value !== '__multi__') {
+      setSelectedCashbookId(value);
+    }
+  };
 
   return (
     <HomeScreen
@@ -144,16 +186,14 @@ const StatisticsScreen = () => {
       overrideIncomes={incomes}
       overrideLoading={loading}
       cashbookOptions={cashbookOptions}
-      selectedCashbookId={selectedCashbookId}
-      onCashbookChange={id => setSelectedCashbookId(id === 'all' ? null : id)}
+      selectedCashbookId={dropdownValue}
+      onCashbookChange={handleCashbookChange}
       onManageCashbooks={() => navigation.navigate('CashBooks')}
       onViewTransactions={() =>
         navigation.navigate('ListExpenses', {
           cashbookScope: true,
-          cashbookIds: selectedCashbookId ? [selectedCashbookId] : cashbooks.map(cashbook => cashbook.id),
-          cashbookNames: selectedCashbookId
-            ? [cashbooks.find(cashbook => cashbook.id === selectedCashbookId)?.name || 'CashBook']
-            : ['All CashBooks'],
+          cashbookIds: statisticsCashbookIds,
+          cashbookNames: statisticsCashbookNames,
         })
       }
       showCashbookSelector

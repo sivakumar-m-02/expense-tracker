@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, Dimensions,
-  TouchableOpacity, ScrollView, StatusBar,
+  TouchableOpacity, ScrollView, StatusBar, Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
 import { LineChart } from "react-native-chart-kit";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { RFValue } from "react-native-responsive-fontsize";
@@ -37,48 +37,25 @@ const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
 
 export default function ReportScreen() {
   const {
-    selectedMonth, selectedYear, budget,
+    selectedMonth, selectedYear, budget, selectedCashbookId,
     primaryColor = "#37474F",
     statisticsCashbookIds,
     statisticsCashbookNames,
-    isStatisticsSelectionActive,
   } = useTransactions();
 
-  const navigation = useNavigation();
-  const route = useRoute();
-  const routeSource = route.params?.source;
-  const routeCashbookIds = Array.isArray(route.params?.cashbookIds) ? route.params.cashbookIds : [];
-  const routeCashbookNames = Array.isArray(route.params?.cashbookNames) ? route.params.cashbookNames : [];
-  const routeCashbookIdsKey = useMemo(() => routeCashbookIds.join(","), [routeCashbookIds]);
-  const routeCashbookNamesKey = useMemo(() => routeCashbookNames.join(","), [routeCashbookNames]);
-
-  const [activeCashbookIds, setActiveCashbookIds] = useState([]);
-  const [activeCashbookNames, setActiveCashbookNames] = useState([]);
-  const [refreshTick, setRefreshTick] = useState(0);
   const [reportExpenses, setReportExpenses] = useState([]);
   const [reportIncomes, setReportIncomes] = useState([]);
+  const [reportBudget, setReportBudget] = useState(null);
   const [reportLoading, setReportLoading] = useState(true);
-  const activeCashbookIdsKey = useMemo(() => activeCashbookIds.join(","), [activeCashbookIds]);
-  const isCashbookMode = activeCashbookIds.length > 0;
-  useEffect(() => {
-    if (routeSource === "cashbook" && routeCashbookIds.length > 0) {
-      setActiveCashbookIds(routeCashbookIds);
-      setActiveCashbookNames(routeCashbookNames);
-    } else if (isStatisticsSelectionActive) {
-      setActiveCashbookIds(statisticsCashbookIds);
-      setActiveCashbookNames(statisticsCashbookNames);
-    } else {
-      setActiveCashbookIds([]);
-      setActiveCashbookNames([]);
-    }
-  }, [
-    isStatisticsSelectionActive,
-    routeSource,
-    routeCashbookIdsKey,
-    routeCashbookNamesKey,
-    statisticsCashbookIds,
-    statisticsCashbookNames,
-  ]);
+  const [scopeModalVisible, setScopeModalVisible] = useState(false);
+
+  // The report scope comes from the shared context selection, so it stays in
+  // sync no matter whether the user picked CashBooks in Statistics or from
+  // the CashBook list.
+  const activeCashbookIds = statisticsCashbookIds;
+  const activeCashbookNames = statisticsCashbookNames;
+  const isAllCashbooks = activeCashbookNames.length === 1 && activeCashbookNames[0] === "All CashBooks";
+  const isCashbookMode = activeCashbookIds.length > 0 && !isAllCashbooks;
 
   useFocusEffect(
     useCallback(() => {
@@ -86,6 +63,7 @@ export default function ReportScreen() {
 
       const loadReportData = async () => {
         setReportLoading(true);
+        setReportBudget(null);
         try {
           const user = auth().currentUser;
           if (!user) {
@@ -142,9 +120,27 @@ export default function ReportScreen() {
             });
           });
 
+          // The Monthly Budget card is only shown when exactly one CashBook
+          // is being viewed. Use the active CashBook's own budget, falling
+          // back to the context (global default) value otherwise.
+          let resolvedSingleBudget = null;
+          if (targetCashbookIds.length === 1) {
+            const cid = targetCashbookIds[0];
+            if (cid !== selectedCashbookId) {
+              const cbSnap = await firestore()
+                .collection("users")
+                .doc(user.uid)
+                .collection("cashbooks")
+                .doc(cid)
+                .get();
+              resolvedSingleBudget = cbSnap.exists ? (cbSnap.data().budget ?? 0) : 0;
+            }
+          }
+
           if (!cancelled) {
             setReportExpenses(exp);
             setReportIncomes(inc);
+            setReportBudget(resolvedSingleBudget);
           }
         } catch (e) {
           console.log("ReportScreen aggregate error:", e);
@@ -158,7 +154,7 @@ export default function ReportScreen() {
       return () => {
         cancelled = true;
       };
-    }, [activeCashbookIdsKey, isCashbookMode, refreshTick])
+    }, [activeCashbookIds, isCashbookMode, selectedCashbookId])
   );
 
   const expenses = reportExpenses;
@@ -211,27 +207,13 @@ export default function ReportScreen() {
     propsForBackgroundLines: { strokeDasharray: "4 6", stroke: "rgba(255,255,255,0.06)" },
   };
 
+  const resolvedBudget = reportBudget !== null ? reportBudget : budget;
   const subtitleText = new Date(selectedYear, selectedMonth, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
-  const selectedCashbooksText = activeCashbookNames.length
-    ? activeCashbookNames.join(", ")
-    : isCashbookMode ? `${activeCashbookIds.length} CashBooks` : null;
-  const headerSubtitle = selectedCashbooksText ? "Selected CashBooks" : "This month";
-
-  const handleRefresh = useCallback(() => {
-    navigation.setParams({
-      source: undefined,
-      cashbookIds: undefined,
-      cashbookNames: undefined,
-    });
-    setActiveCashbookIds([]);
-    setActiveCashbookNames([]);
-    setRefreshTick((value) => value + 1);
-  }, [navigation]);
 
   if (loading) {
     return (
       <LinearGradient colors={["#050D1A", "#071828", "#0A2535"]} style={[styles.container, styles.center]}>
-        <LottieLoader color={primaryColor} title="Generating report" subtitle="Crunching your monthly trends and budget health." />
+        <LottieLoader color={primaryColor} title="Generating report" subtitle="Crunching your CashBook trends and budget health." />
       </LinearGradient>
     );
   }
@@ -244,28 +226,128 @@ export default function ReportScreen() {
       <SafeAreaView style={styles.safe} edges={["top", "right", "left"]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-          {/* ── Header: title + refresh (top-right) ── */}
+          {/* ── Header: title (left) + scope badge (right), space-between ── */}
           <Animated.View entering={FadeInUp.duration(280)}>
             <View style={styles.headerTopRow}>
               <View style={styles.headerTitleBlock}>
-                <Text style={styles.header}>Monthly Trend</Text>
-                <Text style={styles.subheader}>{headerSubtitle}</Text>
-                {selectedCashbooksText ? (
-                  <Text style={styles.cashbookSubtitle} numberOfLines={1}>{selectedCashbooksText}</Text>
-                ) : (
-                  <Text style={styles.monthSubtitle}>{subtitleText}</Text>
-                )}
+                <Text style={styles.header}>CashBook Trend</Text>
+                <Text style={styles.monthSubtitle}>{subtitleText}</Text>
               </View>
-              <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} activeOpacity={0.85}>
+
+              <TouchableOpacity
+                style={styles.scopeBadge}
+                activeOpacity={0.8}
+                onPress={() => setScopeModalVisible(true)}
+              >
                 <LinearGradient
-                  colors={["rgba(0,201,167,0.24)", "rgba(0,201,167,0.08)"]}
-                  style={styles.refreshButtonInner}
+                  colors={
+                    isCashbookMode
+                      ? ["rgba(0,201,167,0.28)", "rgba(0,201,167,0.08)"]
+                      : ["rgba(255,255,255,0.10)", "rgba(255,255,255,0.03)"]
+                  }
+                  style={styles.scopeBadgeInner}
                 >
-                  <Ionicons name="refresh-outline" style={{paddingLeft: RFValue(2)}} size={18} color="#fff" />
+                  <Ionicons
+                    name={isCashbookMode ? "layers-outline" : "albums-outline"}
+                    size={13}
+                    color={isCashbookMode ? "#1DE9B6" : "rgba(255,255,255,0.55)"}
+                  />
+                  <View style={styles.scopeBadgeTextBlock}>
+                    <Text style={styles.scopeBadgeLabel} numberOfLines={1}>
+                      {isCashbookMode ? "Selected" : "All CashBooks"}
+                    </Text>
+                    {isCashbookMode && (
+                      <Text style={styles.scopeBadgeValue} numberOfLines={1} ellipsizeMode="tail">
+                        {activeCashbookNames.join(", ")}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={12}
+                    color="rgba(255,255,255,0.35)"
+                    style={{ marginLeft: 4 }}
+                  />
                 </LinearGradient>
               </TouchableOpacity>
             </View>
           </Animated.View>
+
+          {/* ── Scope detail modal ── */}
+          <Modal
+            visible={scopeModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setScopeModalVisible(false)}
+            statusBarTranslucent
+          >
+            <TouchableOpacity
+              style={styles.modalBackdrop}
+              activeOpacity={1}
+              onPress={() => setScopeModalVisible(false)}
+            >
+              <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.modalCardWrap}>
+                <LinearGradient colors={["#16293B", "#0B1A26"]} style={styles.modalCard}>
+                  <View style={styles.modalHeaderRow}>
+                    <View style={styles.modalIconWrap}>
+                      <Ionicons
+                        name={isCashbookMode ? "layers-outline" : "albums-outline"}
+                        size={17}
+                        color="#1DE9B6"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalTitle}>
+                        {isCashbookMode ? "Selected CashBooks" : "All CashBooks"}
+                      </Text>
+                      <Text style={styles.modalSubtitle}>
+                        {isCashbookMode
+                          ? `${activeCashbookNames.length} CashBook${activeCashbookNames.length > 1 ? "s" : ""} in this report`
+                          : "Aggregated across every CashBook"}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setScopeModalVisible(false)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.modalDivider} />
+
+                  {isCashbookMode ? (
+                    <ScrollView
+                      style={styles.modalList}
+                      showsVerticalScrollIndicator={false}
+                      bounces={false}
+                    >
+                      {activeCashbookNames.map((name, idx) => (
+                        <View key={`${name}-${idx}`} style={styles.modalListItem}>
+                          <View style={styles.modalListIconWrap}>
+                            <Ionicons name="wallet-outline" size={14} color="#1DE9B6" />
+                          </View>
+                          <Text style={styles.modalListText} numberOfLines={2}>{name}</Text>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <Text style={styles.modalEmptyText}>
+                      This report combines income and expenses from every CashBook you own. Open a specific CashBook and view its report to see it in isolation.
+                    </Text>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setScopeModalVisible(false)}
+                  >
+                    <Text style={styles.modalCloseBtnText}>Done</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </Modal>
 
           {/* ── Summary cards: Income / Expense / Surplus-Deficit, one compact row ── */}
           <View style={styles.summaryRow}>
@@ -374,7 +456,7 @@ export default function ReportScreen() {
               ) : (
                 <View style={styles.noDataBlock}>
                   <LottieView source={require("../assets/lottie/sparkle-pulse.json")} autoPlay loop style={styles.noDataLottie} />
-                  <Text style={styles.noDataTitle}>No activity this month</Text>
+                  <Text style={styles.noDataTitle}>No activity found</Text>
                   <Text style={styles.noDataText}>Add income or expenses to view a daily trend.</Text>
                 </View>
               )}
@@ -385,11 +467,11 @@ export default function ReportScreen() {
             {/* MonthlyProgress (BudgetProgress) temporarily disabled for this
                 branch — kept in place, not removed, so it can be restored
                 later by uncommenting. */}
-            {/* <BudgetProgress spent={Math.abs(net).toFixed(0)} budget={budget} primaryColor={primaryColor} /> */}
+            <BudgetProgress spent={Math.abs(net).toFixed(0)} budget={resolvedBudget} primaryColor={primaryColor} />
           </Animated.View>
 
           <Animated.View entering={FadeInUp.duration(300).delay(200)}>
-            <TopCategoriesSection monthExpenses={monthExpenses} subtitle={isCashbookMode ? "Selected Transactions" : "This month"} />
+            <TopCategoriesSection monthExpenses={monthExpenses} subtitle={isCashbookMode ? "Selected Transactions" : "All CashBooks"} />
           </Animated.View>
 
           <Animated.View entering={FadeInUp.duration(300).delay(220)}>
@@ -414,11 +496,40 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: H_PADDING, paddingTop: 14, paddingBottom: 110 },
   center: { justifyContent: "center", alignItems: "center" },
 
-  headerTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
-  headerTitleBlock: { flex: 1, paddingRight: 12 },
+  headerTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  headerTitleBlock: { flex: 1, paddingRight: 10 },
   header: { fontSize: RFValue(20), fontWeight: "800", color: "#fff" },
   subheader: { fontSize: RFValue(12), color: "rgba(255,255,255,0.4)", marginTop: 3 },
-  monthSubtitle: { fontSize: RFValue(10.5), color: "rgba(255,255,255,0.35)", marginTop: 2 },
+  monthSubtitle: { fontSize: RFValue(11), color: "rgba(255,255,255,0.4)", marginTop: 3 },
+  scopeBadge: { borderRadius: 14, overflow: "hidden", maxWidth: 190, marginLeft: 10 },
+  scopeBadgeInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  scopeBadgeTextBlock: { marginLeft: 6, flexShrink: 1 },
+  scopeBadgeLabel: {
+    fontSize: RFValue(8.5),
+    color: "rgba(255,255,255,0.5)",
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  scopeBadgeValue: {
+    fontSize: RFValue(11),
+    color: "#fff",
+    fontWeight: "700",
+    marginTop: 1,
+  },
   cashbookSubtitle: { fontSize: RFValue(10.5), color: "rgba(255,255,255,0.35)", marginTop: 2 },
   refreshButton: {
     width: 40,
@@ -442,6 +553,79 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
   },
 
+  // ── Scope detail modal ──
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(2,8,14,0.72)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+  modalCardWrap: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 22,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  modalCard: {
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  modalHeaderRow: { flexDirection: "row", alignItems: "flex-start" },
+  modalIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(29,233,182,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  modalTitle: { fontSize: RFValue(14.5), fontWeight: "800", color: "#fff" },
+  modalSubtitle: { fontSize: RFValue(10.5), color: "rgba(255,255,255,0.45)", marginTop: 2 },
+  modalDivider: { height: 1, backgroundColor: "rgba(255,255,255,0.08)", marginVertical: 14 },
+  modalList: { maxHeight: 220 },
+  modalListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  modalListIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: "rgba(29,233,182,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  modalListText: { flex: 1, fontSize: RFValue(12.5), color: "#fff", fontWeight: "600" },
+  modalEmptyText: {
+    fontSize: RFValue(12),
+    color: "rgba(255,255,255,0.5)",
+    lineHeight: RFValue(18),
+  },
+  modalCloseBtn: {
+    marginTop: 16,
+    backgroundColor: "rgba(29,233,182,0.16)",
+    borderRadius: 14,
+    paddingVertical: 11,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(29,233,182,0.3)",
+  },
+  modalCloseBtnText: { fontSize: RFValue(12.5), fontWeight: "800", color: "#1DE9B6" },
 
   summaryRow: { flexDirection: "row", gap: 8, marginBottom: 14 },
   summaryCard: { borderRadius: 14, overflow: "hidden" },

@@ -51,9 +51,8 @@ const GlassInput = ({ icon, placeholder, value, onChangeText, keyboardType, mult
   const containerStyle = useAnimatedStyle(() => ({
     borderColor: borderAnim.value === 1 ? ACCENT : 'rgba(255,255,255,0.1)',
     shadowColor: ACCENT,
-    shadowOpacity: borderAnim.value * 0.3,
+    shadowOpacity: borderAnim.value * 0.28,
     shadowRadius: 8,
-    elevation: borderAnim.value > 0 ? 2 : 0,
   }));
 
   return (

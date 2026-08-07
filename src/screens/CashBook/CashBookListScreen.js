@@ -16,6 +16,7 @@ import InteractiveCard from '../../components/InteractiveCard';
 import AppPromptModal from '../../components/AppPromptModal';
 import useAppModal from '../../hooks/useAppModal';
 import { Dropdown } from 'react-native-element-dropdown';
+import { useTransactions } from '../../context/TransactionContext';
 
 const ACCENT = '#00C9A7';
 const ACCENT_DARK = '#00A58A';
@@ -85,6 +86,12 @@ const BackButton = ({ onPress }) => (
 const CashBookListScreen = () => {
   const navigation = useNavigation();
   const { showModal, modalProps } = useAppModal();
+  const {
+    setStatisticsCashbookIds,
+    setStatisticsCashbookNames,
+    setIsStatisticsSelectionActive,
+    setSelectedCashbookId,
+  } = useTransactions();
 
   const [cashbooks, setCashbooks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -359,11 +366,14 @@ const CashBookListScreen = () => {
       return;
     }
     const names = cashbooks.filter((c) => selectedIds.includes(c.id)).map((c) => c.name);
+    setSelectedCashbookId(null);
+    setStatisticsCashbookIds(selectedIds);
+    setStatisticsCashbookNames(names);
+    setIsStatisticsSelectionActive(true);
     setSelectMode(false);
     setSelectedIds([]);
     navigation.navigate('MainApp', {
       screen: 'Reports',
-      params: { source: 'cashbook', cashbookIds: selectedIds, cashbookNames: names },
     });
   };
 
