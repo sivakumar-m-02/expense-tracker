@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, TouchableOpacity, StyleSheet,
@@ -36,8 +36,8 @@ const COLOR_OPTIONS = [
 ];
 
 // ── Info Row card ─────────────────────────────────────────────────────────────
-const InfoCard = ({ icon, children, delay = 0 }) => (
-  <Animated.View entering={FadeInDown.delay(delay).springify()}>
+const InfoCard = memo(({ icon, children, delay = 0 }) => (
+  <Animated.View entering={FadeInDown.duration(280).delay(delay)}>
     <View style={styles.infoCard}>
       <View style={styles.infoIconWrap}>
         <Icon name={icon} size={18} color="#00C9A7" />
@@ -45,7 +45,7 @@ const InfoCard = ({ icon, children, delay = 0 }) => (
       {children}
     </View>
   </Animated.View>
-);
+));
 
 const ProfileScreen = () => {
   const user = auth().currentUser;
@@ -244,7 +244,7 @@ const ProfileScreen = () => {
         <SafeAreaView style={styles.safe} edges={['top', 'right', 'left']}>
 
           {/* ── Header hero ── */}
-          <Animated.View entering={FadeInUp.springify()} style={styles.hero}>
+          <Animated.View entering={FadeInUp.duration(300)} style={styles.hero}>
             <LinearGradient colors={['rgba(0,201,167,0.15)', 'rgba(0,201,167,0.03)']} style={styles.heroBg}>
               <TouchableOpacity
                 onPress={handlePickImage}

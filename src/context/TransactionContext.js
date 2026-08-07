@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { AppState } from "react-native";
 import NetInfo from '@react-native-community/netinfo';
 import auth from "@react-native-firebase/auth";
@@ -221,7 +221,7 @@ export const TransactionProvider = ({ children }) => {
   }, [syncPendingWhenAvailable]);
 
   // Manual refresh function
-  const refreshTransactions = async () => {
+  const refreshTransactions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -245,45 +245,65 @@ export const TransactionProvider = ({ children }) => {
       console.log("TransactionContext manual refresh error:", e);
     }
     setLoading(false);
-  };
+  }, [loadPendingExpenses]);
 
-  const removeLocalPendingExpense = async (id) => {
+  const removeLocalPendingExpense = useCallback(async (id) => {
     try {
       const stillPending = await removePendingOfflineExpense(id);
       setPendingOfflineExpenses(stillPending);
     } catch (e) {
       console.log('TransactionContext removeLocalPendingExpense error:', e);
     }
-  };
+  }, []);
+
+  const contextValue = useMemo(
+    () => ({
+      expenses,
+      incomes,
+      loading,
+      error,
+      budget,
+      setBudget,
+      selectedCashbookId,
+      setSelectedCashbookId,
+      selectedCashbookName,
+      primaryColor,
+      setPrimaryColor,
+      selectedMonth,
+      setSelectedMonth,
+      selectedYear,
+      setSelectedYear,
+      statisticsCashbookIds,
+      setStatisticsCashbookIds,
+      statisticsCashbookNames,
+      setStatisticsCashbookNames,
+      isStatisticsSelectionActive,
+      setIsStatisticsSelectionActive,
+      refreshTransactions,
+      removeLocalPendingExpense,
+    }),
+    [
+      expenses,
+      incomes,
+      loading,
+      error,
+      budget,
+      setBudget,
+      selectedCashbookId,
+      selectedCashbookName,
+      primaryColor,
+      selectedMonth,
+      selectedYear,
+      statisticsCashbookIds,
+      statisticsCashbookNames,
+      isStatisticsSelectionActive,
+      refreshTransactions,
+      removeLocalPendingExpense,
+    ],
+  );
 
   return (
-    <TransactionContext.Provider
-      value={{
-        expenses,
-        incomes,
-        loading,
-        error,
-        budget,
-        setBudget,
-        selectedCashbookId,
-        setSelectedCashbookId,
-        selectedCashbookName,
-        primaryColor,
-        setPrimaryColor,
-        selectedMonth,
-        setSelectedMonth,
-        selectedYear,
-        setSelectedYear,
-        statisticsCashbookIds,
-        setStatisticsCashbookIds,
-        statisticsCashbookNames,
-        setStatisticsCashbookNames,
-        isStatisticsSelectionActive,
-        setIsStatisticsSelectionActive,
-        refreshTransactions,
-        removeLocalPendingExpense,
-      }}
-    >
+    <TransactionContext.Provider value={contextValue}>
       {children}
     </TransactionContext.Provider>
   );

@@ -86,6 +86,7 @@ function BottomTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
+        lazy: true,
         headerShown: false,
         tabBarStyle: {
           backgroundColor: "transparent",

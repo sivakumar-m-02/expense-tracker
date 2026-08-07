@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { memo, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -29,7 +29,8 @@ import { useTransactions } from "../context/TransactionContext";
 import InteractiveCard from "../components/InteractiveCard";
 import LottieLoader from "../components/LottieLoader";
 import TopCategoriesSection from "../components/TopCategoriesSection";
-import { Dropdown } from "react-native-element-dropdown";
+import CashbookMultiSelect from "../components/CashbookMultiSelect";
+import DateRangeSection from "../components/DateRangeSection";
 
 const RUPEE = "\u20B9";
 const { width } = Dimensions.get("window");
@@ -129,11 +130,11 @@ const HomeScreen = ({
   overrideExpenses,
   overrideIncomes,
   overrideLoading,
-  cashbookOptions,
-  selectedCashbookId,
-  onCashbookChange,
-  onManageCashbooks,
+  cashbookMultiSelectData,
+  selectedCashbookIds,
+  onCashbookMultiChange,
   onViewTransactions,
+  onDateRangeNavigate,
   showCashbookSelector = false,
   hideActions = false,
 }) => {
@@ -208,14 +209,6 @@ const HomeScreen = ({
       { scale: 0.986 + balanceIntro.value * 0.014 },
     ],
   }));
-
-  const formatAmount = (amt) => {
-    if (amt >= 1000) {
-      const val = amt % 1000 === 0 ? amt / 1000 : (amt / 1000).toFixed(1);
-      return `${val}k`;
-    }
-    return amt;
-  };
 
   if (error) {
     return (
@@ -327,25 +320,11 @@ const HomeScreen = ({
         <View style={styles.topWrap}>
           {showCashbookSelector && (
             <View style={styles.cashbookPickerRow}>
-              <Dropdown
-                style={styles.cashbookPicker}
-                containerStyle={styles.cashbookPickerMenu}
-                itemContainerStyle={styles.cashbookPickerItem}
-                itemTextStyle={styles.cashbookPickerItemText}
-                selectedTextStyle={styles.cashbookPickerText}
-                activeColor="rgba(0,201,167,0.16)"
-                data={cashbookOptions || []}
-                labelField="label"
-                valueField="value"
-                value={selectedCashbookId || "all"}
-                onChange={(item) => onCashbookChange?.(item.value)}
-                renderLeftIcon={() => <Ionicons name="book-outline" size={17} color="#00C9A7" style={{ marginRight: 9 }} />}
+              <CashbookMultiSelect
+                data={cashbookMultiSelectData || []}
+                value={selectedCashbookIds || []}
+                onChange={onCashbookMultiChange}
               />
-              {onManageCashbooks && (
-                <TouchableOpacity style={styles.cashbookManageBtn} onPress={onManageCashbooks}>
-                  <Ionicons name="settings-outline" size={19} color="#00C9A7" />
-                </TouchableOpacity>
-              )}
             </View>
           )}
           <Animated.View style={balanceCardAnimatedStyle}>
@@ -381,22 +360,6 @@ const HomeScreen = ({
                 )}
               </View>
 
-              <View style={styles.ieRow}>
-                <LinearGradient colors={["rgba(29,233,182,0.2)", "rgba(29,233,182,0.08)"]} style={styles.iePillBox}>
-                  <Ionicons name="arrow-down" size={16} color="#1DE9B6" style={styles.pillIcon} />
-                  <View>
-                    <Text style={styles.iePillLabel}>Today In</Text>
-                    <Text style={[styles.ieValue, { color: "#1DE9B6" }]}>{RUPEE} {formatAmount(todayIncome)}</Text>
-                  </View>
-                </LinearGradient>
-                <LinearGradient colors={["rgba(255,107,107,0.2)", "rgba(255,107,107,0.08)"]} style={styles.iePillBox}>
-                  <Ionicons name="arrow-up" size={16} color="#FF6B6B" style={styles.pillIcon} />
-                  <View>
-                    <Text style={styles.iePillLabel}>Today Out</Text>
-                    <Text style={[styles.ieValue, { color: "#FF6B6B" }]}>{RUPEE} {formatAmount(todayExpense)}</Text>
-                  </View>
-                </LinearGradient>
-              </View>
             </LinearGradient>
           </Animated.View>
         </View>
@@ -427,6 +390,10 @@ const HomeScreen = ({
             ))}
           </View>} */}
 
+          {showCashbookSelector && onDateRangeNavigate && (
+            <DateRangeSection onApply={onDateRangeNavigate} />
+          )}
+
           {/* Today's Summary Strip */}
           <TodaySummaryStrip
             todayIncome={todayIncome}
@@ -441,25 +408,20 @@ const HomeScreen = ({
             <TopCategoriesSection monthExpenses={monthExpenses} />
           </View>
         </ScrollView>
+
       </SafeAreaView>
     </View>
   );
 };
 
-export default HomeScreen;
+export default memo(HomeScreen);
 
 // ── Base styles ───────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#050D1A" },
   safeArea: { flex: 1 },
   topWrap: { paddingHorizontal: 16, paddingTop: 14 },
-  cashbookPickerRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
-  cashbookPicker: { flex: 1, height: 48, borderRadius: 14, paddingHorizontal: 13, backgroundColor: "rgba(255,255,255,0.06)", borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
-  cashbookPickerText: { color: "#fff", fontSize: RFValue(13), fontWeight: "700" },
-  cashbookPickerMenu: { backgroundColor: "#0D1F2D", borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", overflow: "hidden" },
-  cashbookPickerItem: { backgroundColor: "#0D1F2D" },
-  cashbookPickerItemText: { color: "#fff", fontSize: RFValue(13) },
-  cashbookManageBtn: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: "rgba(0,201,167,0.1)", borderWidth: 1, borderColor: "rgba(0,201,167,0.3)" },
+  cashbookPickerRow: { flexDirection: "row", marginBottom: 12, width: "100%" },
   container: { flex: 1, padding: 16 },
   loader: { flex: 1, justifyContent: "center", alignItems: "center" },
   errorTitle: { fontWeight: "700", fontSize: 18, marginBottom: 8 },
@@ -476,12 +438,6 @@ const styles = StyleSheet.create({
   balanceAmount: { fontSize: RFValue(36), fontWeight: "900", letterSpacing: 1 },
   balanceSubtitle: { color: "rgba(255,255,255,0.35)", fontSize: RFValue(11), marginTop: 4 },
   filterBtn: { backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 12, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
-
-  ieRow: { flexDirection: "row", marginTop: 20, gap: 12 },
-  iePillBox: { flex: 1, flexDirection: "row", alignItems: "center", borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.06)" },
-  pillIcon: { marginRight: 10 },
-  iePillLabel: { color: "rgba(255,255,255,0.4)", fontSize: RFValue(10), fontWeight: "600", marginBottom: 2 },
-  ieValue: { fontSize: RFValue(14), fontWeight: "800" },
 
   actionsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 22, gap: 10 },
   actionBtnWrap: { flex: 1 },
