@@ -9,7 +9,6 @@ import DateFilterModal, { MONTH_NAMES } from './DateFilterModal';
 const PRESETS = [
   { id: 'week', label: 'This Week', icon: 'calendar-outline' },
   { id: 'month', label: 'This Month', icon: 'today-outline' },
-  { id: '30days', label: 'Last 30 Days', icon: 'time-outline' },
 ];
 
 const toDateParts = (date) => ({
@@ -35,16 +34,16 @@ const getPresetRange = (presetId) => {
     }
     case 'month':
       return { start: { day: 1, month: today.getMonth(), year: today.getFullYear() }, end };
-    case '30days': {
-      const start = new Date(today);
-      start.setDate(today.getDate() - 29);
-      return { start: toDateParts(start), end };
-    }
     default:
       return { start: null, end: null };
   }
 };
 
+// Date Range filter — "This Week" / "This Month" presets plus a Custom
+// range (picked via the shared calendar DateFilterModal). Reuses the same
+// onApply(start, end) contract regardless of how the range was chosen, so
+// the caller (HomeScreen) only has one code path to hand off to
+// ListExpensesScreen.
 const DateRangeSection = ({ onApply }) => {
   const now = new Date();
   const [rangeStart, setRangeStart] = useState(null);
@@ -58,7 +57,7 @@ const DateRangeSection = ({ onApply }) => {
 
   const rangeSummary = useMemo(() => {
     if (!rangeReady) return 'Pick a preset or choose custom dates';
-    return `${formatDateLabel(rangeStart)}  →  ${formatDateLabel(rangeEnd)}`;
+    return `${formatDateLabel(rangeStart)}  \u2192  ${formatDateLabel(rangeEnd)}`;
   }, [rangeStart, rangeEnd, rangeReady]);
 
   const handlePreset = useCallback((presetId) => {
@@ -74,6 +73,7 @@ const DateRangeSection = ({ onApply }) => {
     setPickerMonth(seed.month);
     setActivePreset('custom');
     setModalVisible(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rangeStart]);
 
   const handleRangeChange = useCallback(({ start, end }) => {
@@ -103,6 +103,7 @@ const DateRangeSection = ({ onApply }) => {
       setRangeStart(null);
       setActivePreset(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rangeEnd, rangeStart]);
 
   return (

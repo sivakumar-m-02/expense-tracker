@@ -16,7 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRoute } from "@react-navigation/native";
 import AppPromptModal from "../components/AppPromptModal";
 import useAppModal from "../hooks/useAppModal";
-import DateFilterModal, { MONTH_NAMES } from "../components/DateFilterModal";
+
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 const ListExpensesScreen = () => {
   const { expenses, incomes, selectedMonth, selectedYear, primaryColor, refreshTransactions, removeLocalPendingExpense } = useTransactions();
@@ -27,9 +28,10 @@ const ListExpensesScreen = () => {
   );
   const isCashbookMode = route.params?.cashbookScope === true || cashbookIds.length > 0;
   const cashbookIdsKey = cashbookIds.join(',');
-  const dateRangeStart = route.params?.dateRangeStart ?? null;
-  const dateRangeEnd = route.params?.dateRangeEnd ?? null;
-  const isDateRangeMode = !!(dateRangeStart && dateRangeEnd);
+  // When arriving from the Date Range filter (Home/Statistics), the range is
+  // handed in via route params and must not be overridable from in here —
+  // the calendar filter control is hidden entirely for this flow.
+  const lockDateFilter = route.params?.lockDateFilter === true;
   const [cashbookExpenses, setCashbookExpenses] = useState([]);
   const [cashbookIncomes, setCashbookIncomes] = useState([]);
   const [cashbookLoading, setCashbookLoading] = useState(false);
@@ -96,6 +98,15 @@ const ListExpensesScreen = () => {
   // ── Date filter state ──────────────────────────────────────────────────────
   const [dateFilterModal, setDateFilterModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null); // null = no filter
+  // A Start/End range, e.g. handed in from the Home screen's Date Range
+  // fields via route params. Lives in local state (seeded once from the
+  // route) so it can be cleared the same way the existing single-day filter
+  // is cleared, without introducing a second filtering code path.
+  const [selectedRange, setSelectedRange] = useState(() => {
+    const start = route.params?.dateRangeStart;
+    const end = route.params?.dateRangeEnd;
+    return start && end ? { start: new Date(start), end: new Date(end) } : null;
+  });
   // For the date picker inside modal: pick day from current month
   const [pickerYear,  setPickerYear]  = useState(selectedYear);
   const [pickerMonth, setPickerMonth] = useState(selectedMonth);
@@ -106,10 +117,23 @@ const ListExpensesScreen = () => {
     setPickerMonth(selectedMonth);
   }, [selectedMonth, selectedYear]);
 
+  const daysInPickerMonth = useMemo(() => {
+    return new Date(pickerYear, pickerMonth + 1, 0).getDate();
+  }, [pickerYear, pickerMonth]);
+
+  const dayNumbers = useMemo(() =>
+    Array.from({ length: daysInPickerMonth }, (_, i) => i + 1),
+    [daysInPickerMonth]
+  );
+
   const activeDateLabel = useMemo(() => {
+    if (selectedRange) {
+      const fmt = (d) => `${d.getDate()} ${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+      return `${fmt(selectedRange.start)} - ${fmt(selectedRange.end)}`;
+    }
     if (!selectedDate) return null;
     return `${selectedDate.day} ${MONTH_NAMES[selectedDate.month]} ${selectedDate.year}`;
-  }, [selectedDate]);
+  }, [selectedDate, selectedRange]);
 
   useEffect(() => {
     Animated.timing(searchBarAnim, { toValue: searchFocused ? 1 : 0, duration: 200, useNativeDriver: false }).start();
@@ -120,40 +144,42 @@ const ListExpensesScreen = () => {
     outputRange: ['rgba(255,255,255,0.1)', '#00C9A7'],
   });
 
-  const toDateParts = (d) => {
-    const js = d?.seconds ? new Date(d.seconds * 1000) : new Date(d);
-    return js;
-  };
-
-  const isWithinDateRange = (d) => {
-    if (!isDateRangeMode) return true;
-    const start = new Date(dateRangeStart.year, dateRangeStart.month, dateRangeStart.day, 0, 0, 0, 0);
-    const end = new Date(dateRangeEnd.year, dateRangeEnd.month, dateRangeEnd.day, 23, 59, 59, 999);
-    return d >= start && d <= end;
-  };
-
   const { allTransactions, loading } = useMemo(() => {
     const filterMonth = (arr) => arr.filter((t) => {
-      const d = toDateParts(t.date);
-      if (isDateRangeMode) return isWithinDateRange(d);
+      const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
       return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
     });
+    // A Start/End range can span multiple months, so it opts out of the
+    // single-month restriction below (the range itself does the narrowing,
+    // in the filteredTransactions memo further down).
+    const monthOrAll = selectedRange ? (arr) => arr : filterMonth;
     const sourceExpenses = isCashbookMode ? cashbookExpenses : expenses;
     const sourceIncomes = isCashbookMode ? cashbookIncomes : incomes;
-    const all = [...filterMonth(sourceExpenses), ...filterMonth(sourceIncomes)].sort((a, b) => {
+    const all = [...monthOrAll(sourceExpenses), ...monthOrAll(sourceIncomes)].sort((a, b) => {
       const da = new Date(a.date?.seconds ? a.date.seconds * 1000 : a.date);
       const db = new Date(b.date?.seconds ? b.date.seconds * 1000 : b.date);
       return db - da;
     });
     return { allTransactions: all, loading: isCashbookMode ? cashbookLoading : expenses.length === 0 && incomes.length === 0 };
-  }, [cashbookExpenses, cashbookIncomes, cashbookLoading, expenses, incomes, isCashbookMode, isDateRangeMode, dateRangeEnd, dateRangeStart, selectedMonth, selectedYear]);
+  }, [cashbookExpenses, cashbookIncomes, cashbookLoading, expenses, incomes, isCashbookMode, selectedMonth, selectedYear, selectedRange]);
 
   // Apply both search + date filter
   const filteredTransactions = useMemo(() => {
     let result = allTransactions;
 
-    // Date filter
-    if (selectedDate) {
+    // Date filter — a Start/End range takes priority over the single-day
+    // picker (they're mutually exclusive in the UI: picking a range clears
+    // the single day and vice versa via the Clear button).
+    if (selectedRange) {
+      const startOfDay = new Date(selectedRange.start);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(selectedRange.end);
+      endOfDay.setHours(23, 59, 59, 999);
+      result = result.filter((t) => {
+        const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
+        return d >= startOfDay && d <= endOfDay;
+      });
+    } else if (selectedDate) {
       result = result.filter((t) => {
         const d = t.date?.seconds ? new Date(t.date.seconds * 1000) : new Date(t.date);
         return (
@@ -175,7 +201,7 @@ const ListExpensesScreen = () => {
     }
 
     return result;
-  }, [allTransactions, searchQuery, selectedDate]);
+  }, [allTransactions, searchQuery, selectedDate, selectedRange]);
 
   const { sections, totalExpense, totalIncome, netTotal, isNetPositive,
     filteredExpense, filteredIncome, filteredNet, isFilteredNetPositive } = useMemo(() => {
@@ -197,14 +223,8 @@ const ListExpensesScreen = () => {
   }, [allTransactions, filteredTransactions]);
 
   const isSearchActive   = searchQuery.trim().length > 0;
-  const isDateActive     = !!selectedDate || isDateRangeMode;
+  const isDateActive     = !!selectedDate || !!selectedRange;
   const isFilterActive   = isSearchActive || isDateActive;
-
-  const dateRangeLabel = useMemo(() => {
-    if (!isDateRangeMode) return null;
-    const fmt = (p) => `${p.day} ${MONTH_NAMES[p.month]} ${p.year}`;
-    return `${fmt(dateRangeStart)} – ${fmt(dateRangeEnd)}`;
-  }, [dateRangeEnd, dateRangeStart, isDateRangeMode]);
 
   const handleDelete = async (item) => {
     try {
@@ -342,7 +362,7 @@ const ListExpensesScreen = () => {
           <Icon name="search-outline" size={60} color="rgba(255,255,255,0.12)" />
           <Text style={{ marginTop: 16, fontSize: RFValue(15), color: 'rgba(255,255,255,0.4)', fontWeight: '600', textAlign: 'center' }}>
             No results{isSearchActive ? ` for "${searchQuery}"` : ""}
-            {isDateActive ? `\non ${isDateRangeMode ? dateRangeLabel : activeDateLabel}` : ""}
+            {isDateActive ? `\non ${activeDateLabel}` : ""}
           </Text>
           <Text style={{ marginTop: 6, fontSize: RFValue(12), color: 'rgba(255,255,255,0.25)' }}>Try adjusting your filters</Text>
         </>
@@ -364,11 +384,7 @@ const ListExpensesScreen = () => {
           <Icon name="filter" size={13} color="#00C9A7" />
           <Text style={[srb.countText, { color: "#00C9A7" }]}>{count} result{count !== 1 ? 's' : ''}</Text>
           {isSearchActive && <><Text style={srb.forText}>for </Text><Text style={srb.queryText}>"{searchQuery}"</Text></>}
-            {isDateActive && !isSearchActive && (
-              <Text style={srb.queryText}>
-                {isDateRangeMode ? dateRangeLabel : activeDateLabel}
-              </Text>
-            )}
+          {isDateActive   && <Text style={srb.queryText}> {activeDateLabel}</Text>}
         </View>
         {count > 0 && (
           <View style={[srb.pill, { backgroundColor: isFilteredNetPositive ? 'rgba(29,233,182,0.15)' : 'rgba(255,107,107,0.15)' }]}>
@@ -427,25 +443,77 @@ const ListExpensesScreen = () => {
         </View>
       </Modal>
 
-      {!isDateRangeMode && (
-        <DateFilterModal
-          visible={dateFilterModal}
-          onClose={() => setDateFilterModal(false)}
-          pickerYear={pickerYear}
-          pickerMonth={pickerMonth}
-          onPickerYearChange={setPickerYear}
-          onPickerMonthChange={setPickerMonth}
-          selectedDate={selectedDate}
-          onSelectDate={(datePart, isSelected) => {
-            if (isSelected) setSelectedDate(null);
-            else setSelectedDate(datePart);
-          }}
-          onClear={() => {
-            setSelectedDate(null);
-            setDateFilterModal(false);
-          }}
-        />
-      )}
+      {/* Date Filter Modal */}
+      <Modal visible={dateFilterModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <Text style={styles.modalTitle}>Filter by Date</Text>
+              <TouchableOpacity onPress={() => setDateFilterModal(false)}
+                style={{ backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 999, padding: 6 }}>
+                <Icon name="close" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Month picker row */}
+            <View style={df.row}>
+              <TouchableOpacity style={df.navBtn} onPress={() => {
+                if (pickerMonth === 0) { setPickerMonth(11); setPickerYear(y => y - 1); }
+                else setPickerMonth(m => m - 1);
+              }}>
+                <Icon name="chevron-back" size={16} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+              <Text style={df.monthLabel}>{MONTH_NAMES[pickerMonth]} {pickerYear}</Text>
+              <TouchableOpacity style={df.navBtn} onPress={() => {
+                const now = new Date();
+                const atMax = pickerYear === now.getFullYear() && pickerMonth === now.getMonth();
+                if (atMax) return;
+                if (pickerMonth === 11) { setPickerMonth(0); setPickerYear(y => y + 1); }
+                else setPickerMonth(m => m + 1);
+              }}>
+                <Icon name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Day grid */}
+            <View style={df.dayGrid}>
+              {dayNumbers.map((day) => {
+                const isSel = selectedDate &&
+                  selectedDate.day === day &&
+                  selectedDate.month === pickerMonth &&
+                  selectedDate.year === pickerYear;
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    style={[df.dayChip, isSel && df.dayChipActive]}
+                    onPress={() => {
+                      if (isSel) {
+                        setSelectedDate(null);
+                      } else {
+                        setSelectedDate({ day, month: pickerMonth, year: pickerYear });
+                        setSelectedRange(null);
+                      }
+                    }}
+                  >
+                    <Text style={[df.dayText, isSel && df.dayTextActive]}>{day}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.modalActions}>
+              {(selectedDate || selectedRange) && (
+                <TouchableOpacity style={styles.modalBtn} onPress={() => { setSelectedDate(null); setSelectedRange(null); setDateFilterModal(false); }}>
+                  <Text style={styles.modalBtnText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#00897B', flex: 1 }]} onPress={() => setDateFilterModal(false)}>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Search bar + Date filter button */}
       <View style={[search.wrapper, { paddingTop: insets.top + 60 }]}>
@@ -473,35 +541,24 @@ const ListExpensesScreen = () => {
             )}
           </Animated.View>
 
-          {/* Date filter button — disabled when opened via date range from Statistics */}
-          <TouchableOpacity
-            style={[
-              search.dateBtn,
-              isDateActive && search.dateBtnActive,
-              isDateRangeMode && search.dateBtnDisabled,
-            ]}
-            onPress={() => !isDateRangeMode && setDateFilterModal(true)}
-            activeOpacity={isDateRangeMode ? 1 : 0.75}
-            disabled={isDateRangeMode}
-          >
-            <Icon
-              name="calendar"
-              size={17}
-              color={
-                isDateRangeMode
-                  ? "rgba(0,201,167,0.45)"
-                  : isDateActive
-                    ? "#00C9A7"
-                    : "rgba(255,255,255,0.45)"
-              }
-            />
-            {isDateActive && !isDateRangeMode && <View style={search.dateDot} />}
-            {isDateRangeMode && (
-              <View style={search.dateLock}>
-                <Icon name="lock-closed" size={8} color="rgba(0,201,167,0.6)" />
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* Date filter button — hidden entirely when locked, since the
+              range was set from Home's Date Range filter and shouldn't be
+              overridable from in here. */}
+          {!lockDateFilter && (
+            <TouchableOpacity
+              style={[search.dateBtn, isDateActive && search.dateBtnActive]}
+              onPress={() => setDateFilterModal(true)}
+              activeOpacity={0.75}
+            >
+              <Icon name="calendar" size={17} color={isDateActive ? "#00C9A7" : "rgba(255,255,255,0.45)"} />
+              {isDateActive && <View style={search.dateDot} />}
+            </TouchableOpacity>
+          )}
+          {lockDateFilter && isDateActive && (
+            <View style={[search.dateBtn, search.dateBtnActive, search.dateBtnLocked]}>
+              <Icon name="lock-closed" size={15} color="#00C9A7" />
+            </View>
+          )}
         </View>
 
         {/* Quick-search chips — hidden when date filter is active or search focused */}
@@ -594,26 +651,13 @@ const search = StyleSheet.create({
     borderColor: "#00C9A7",
     backgroundColor: "rgba(0,201,167,0.1)",
   },
-  dateBtnDisabled: {
-    opacity: 0.55,
-    borderColor: "rgba(0,201,167,0.25)",
-    backgroundColor: "rgba(0,201,167,0.06)",
+  dateBtnLocked: {
+    opacity: 0.85,
   },
   dateDot: {
     position: "absolute", top: 7, right: 8,
     width: 7, height: 7, borderRadius: 4,
     backgroundColor: "#00C9A7",
-  },
-  dateLock: {
-    position: "absolute",
-    top: 6,
-    right: 7,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "rgba(0,201,167,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
 
@@ -628,6 +672,24 @@ const srb = StyleSheet.create({
 });
 
 // ─── Date Filter styles ────────────────────────────────────────────────────────
+const df = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingHorizontal: 4 },
+  navBtn: { padding: 8, backgroundColor: "rgba(255,255,255,0.07)", borderRadius: 10 },
+  monthLabel: { fontSize: RFValue(15), fontWeight: "700", color: "#fff" },
+  dayGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-start", gap: 7, marginBottom: 16 },
+  dayChip: {
+    width: 38, height: 38, borderRadius: 10,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.08)",
+  },
+  dayChipActive: {
+    backgroundColor: "#00897B",
+    borderColor: "#00C9A7",
+  },
+  dayText: { fontSize: RFValue(12), fontWeight: "600", color: "rgba(255,255,255,0.5)" },
+  dayTextActive: { color: "#fff", fontWeight: "700" },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050D1A' },

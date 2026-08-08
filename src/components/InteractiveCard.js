@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -24,28 +24,35 @@ const InteractiveCard = ({
 }) => {
   const progress = useSharedValue(0);
 
-  const tapGesture = Gesture.Tap()
-    .enabled(enabled)
-    .onBegin(() => {
-      progress.value = withSpring(1, SPRING_CONFIG);
-    })
-    .onFinalize((_event, success) => {
-      progress.value = withSpring(0, SPRING_CONFIG);
-      if (success && onPress) {
-        runOnJS(onPress)();
-      }
-    });
+  // Building the gesture objects is non-trivial work (Gesture.Tap /
+  // Gesture.LongPress / Gesture.Race all allocate handler config), so it's
+  // memoized rather than redone on every render/navigation frame — this is
+  // the "instant to open" fix for anything wrapped in an InteractiveCard.
+  const composed = useMemo(() => {
+    const tapGesture = Gesture.Tap()
+      .enabled(enabled)
+      .onBegin(() => {
+        progress.value = withSpring(1, SPRING_CONFIG);
+      })
+      .onFinalize((_event, success) => {
+        progress.value = withSpring(0, SPRING_CONFIG);
+        if (success && onPress) {
+          runOnJS(onPress)();
+        }
+      });
 
-  const longPressGesture = Gesture.LongPress()
-    .enabled(enabled)
-    .minDuration(380)
-    .onFinalize((_event, success) => {
-      if (success && onLongPress) {
-        runOnJS(onLongPress)();
-      }
-    });
+    const longPressGesture = Gesture.LongPress()
+      .enabled(enabled)
+      .minDuration(380)
+      .onFinalize((_event, success) => {
+        if (success && onLongPress) {
+          runOnJS(onLongPress)();
+        }
+      });
 
-  const composed = Gesture.Race(longPressGesture, tapGesture);
+    return Gesture.Race(longPressGesture, tapGesture);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, onPress, onLongPress]);
 
   const animatedStyle = useAnimatedStyle(() => {
     const scale = 1 - progress.value * (1 - pressScale);
@@ -71,4 +78,6 @@ const styles = StyleSheet.create({
   base: {},
 });
 
-export default InteractiveCard;
+// Memoized so a parent re-render with the same onPress/onLongPress/style
+// doesn't force a rebuild of this card's gesture handlers.
+export default React.memo(InteractiveCard);

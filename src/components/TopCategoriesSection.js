@@ -125,7 +125,11 @@ const TopCategoriesSection = ({ monthExpenses, subtitle = "This month" }) => {
   );
 };
 
-export default TopCategoriesSection;
+// Memoized: HomeScreen/ReportScreen pass a freshly-filtered monthExpenses
+// array each render, but its contents are unchanged far more often than the
+// parent re-renders, so a shallow-prop memo avoids re-running the
+// category/percentage aggregation and re-mounting the entering animations.
+export default React.memo(TopCategoriesSection);
 
 const cat = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },

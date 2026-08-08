@@ -1,9 +1,9 @@
-import React, { memo, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   TextInput, Modal, FlatList, StatusBar, Dimensions, Platform,
-  TouchableWithoutFeedback,
+  TouchableWithoutFeedback, InteractionManager,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
@@ -36,8 +36,11 @@ const COLOR_OPTIONS = [
 ];
 
 // ── Info Row card ─────────────────────────────────────────────────────────────
-const InfoCard = memo(({ icon, children, delay = 0 }) => (
-  <Animated.View entering={FadeInDown.duration(280).delay(delay)}>
+// Memoized: this only re-renders when its own props change, so retyping the
+// budget input (which re-renders ProfileScreen on every keystroke) no
+// longer re-triggers 4 InfoCards + their entering animations each time.
+const InfoCard = React.memo(({ icon, children, delay = 0 }) => (
+  <Animated.View entering={FadeInDown.delay(delay).springify()}>
     <View style={styles.infoCard}>
       <View style={styles.infoIconWrap}>
         <Icon name={icon} size={18} color="#00C9A7" />
@@ -64,10 +67,25 @@ const ProfileScreen = () => {
   const [profileImage, setProfileImage] = useState(null);
   const [previewVisible, setPreviewVisible] = useState(false);
 
-  // Avatar pulse
+  // Avatar pulse.
+  //
+  // Root cause of the first-open stutter: the bottom tab navigator only
+  // mounts this screen the first time the Profile tab is focused (lazy
+  // mounting). That means the tab-switch transition, this component's
+  // initial mount/render, ~5 simultaneous `entering` spring animations, and
+  // this infinite pulse loop were all being kicked off on the same frame —
+  // competing for the UI thread right as the screen transition itself was
+  // animating. Deferring the *continuous* animation (the one-off `entering`
+  // animations still play immediately, since those are the visible "screen
+  // arriving" effect) until interactions/transitions finish removes that
+  // contention on first open, without changing how anything looks once
+  // settled.
   const pulse = useSharedValue(1);
   useEffect(() => {
-    pulse.value = withRepeat(withTiming(1.06, { duration: 2000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    const task = InteractionManager.runAfterInteractions(() => {
+      pulse.value = withRepeat(withTiming(1.06, { duration: 2000, easing: Easing.inOut(Easing.sin) }), -1, true);
+    });
+    return () => task.cancel();
   }, []);
   const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
@@ -84,7 +102,7 @@ const ProfileScreen = () => {
     fetchProfile();
   }, []);
 
-  const uploadImageToCloudinary = async (uri) => {
+  const uploadImageToCloudinary = useCallback(async (uri) => {
     if (!user) return;
   
     try {
@@ -140,9 +158,9 @@ const ProfileScreen = () => {
     }
   
     setSaving(false);
-  };
+  }, [user, showModal]);
 
-  const handlePickImage = async () => {
+  const handlePickImage = useCallback(async () => {
     launchImageLibrary(
       { mediaType: 'photo', quality: 0.5 },
       async (response) => {
@@ -163,7 +181,7 @@ const ProfileScreen = () => {
         await uploadImageToCloudinary(uri);
       }
     );
-  };
+  }, [showModal, uploadImageToCloudinary]);
 
   useEffect(() => {
     const loadKey = async () => {
@@ -173,7 +191,7 @@ const ProfileScreen = () => {
     loadKey();
   }, []);
 
-  const handleSaveApiKey = async () => {
+  const handleSaveApiKey = useCallback(async () => {
     if (adminPassword.trim().toUpperCase() !== 'VERIFY') {
       showModal({
         type: 'error',
@@ -194,15 +212,15 @@ const ProfileScreen = () => {
       title: 'API Key Saved',
       message: 'Your API key is stored securely.'
     });
-  };
+  }, [adminPassword, apiInput, showModal]);
 
 
-  const getInitials = (name) => {
+  const getInitials = useCallback((name) => {
     if (!name) return 'U';
     return name.split(' ').map((n) => n[0]).join('').toUpperCase();
-  };
+  }, []);
 
-  const handleSaveBudget = async () => {
+  const handleSaveBudget = useCallback(async () => {
     if (!user) return;
     const val = Number(budgetInput);
     if (!budgetInput || isNaN(val) || val <= 0) {
@@ -221,9 +239,9 @@ const ProfileScreen = () => {
       showModal({ type: 'error', title: 'Error', message: 'Failed to save budget.' });
     }
     setSaving(false);
-  };
+  }, [user, budgetInput, selectedCashbookId, setBudget, showModal]);
 
-  const handleSelectColor = async (color) => {
+  const handleSelectColor = useCallback(async (color) => {
     if (!user) return;
     setColorModalVisible(false);
     try {
@@ -233,7 +251,7 @@ const ProfileScreen = () => {
     } catch {
       showModal({ type: 'error', title: 'Error', message: 'Failed to save color.' });
     }
-  };
+  }, [user, setPrimaryColor, showModal]);
 
   return (
     <>
@@ -244,7 +262,7 @@ const ProfileScreen = () => {
         <SafeAreaView style={styles.safe} edges={['top', 'right', 'left']}>
 
           {/* ── Header hero ── */}
-          <Animated.View entering={FadeInUp.duration(300)} style={styles.hero}>
+          <Animated.View entering={FadeInUp.springify()} style={styles.hero}>
             <LinearGradient colors={['rgba(0,201,167,0.15)', 'rgba(0,201,167,0.03)']} style={styles.heroBg}>
               <TouchableOpacity
                 onPress={handlePickImage}

@@ -256,6 +256,13 @@ export const TransactionProvider = ({ children }) => {
     }
   }, []);
 
+  // The provider value is memoized so screens that consume unrelated slices
+  // of this context (e.g. Profile only needs budget/primaryColor) don't
+  // re-render every time an unrelated piece of state changes elsewhere
+  // (e.g. expenses ticking in from a Firestore snapshot while the user is
+  // on the Profile tab). This was previously a plain object literal that
+  // was recreated on every render, which forced every consumer to re-render
+  // on every context update regardless of which fields they actually used.
   const contextValue = useMemo(
     () => ({
       expenses,
@@ -299,7 +306,7 @@ export const TransactionProvider = ({ children }) => {
       isStatisticsSelectionActive,
       refreshTransactions,
       removeLocalPendingExpense,
-    ],
+    ]
   );
 
   return (

@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -29,13 +29,14 @@ import { useTransactions } from "../context/TransactionContext";
 import InteractiveCard from "../components/InteractiveCard";
 import LottieLoader from "../components/LottieLoader";
 import TopCategoriesSection from "../components/TopCategoriesSection";
-import CashbookMultiSelect from "../components/CashbookMultiSelect";
 import DateRangeSection from "../components/DateRangeSection";
+import CashbookMultiSelect from "../components/CashbookMultiSelect";
 
 const RUPEE = "\u20B9";
 const { width } = Dimensions.get("window");
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-const FloatingOrb = ({ size, color, delay, startX, startY }) => {
+const FloatingOrb = React.memo(({ size, color, delay, startX, startY }) => {
   const y = useSharedValue(0);
   const opacity = useSharedValue(0.12);
   useEffect(() => {
@@ -44,10 +45,10 @@ const FloatingOrb = ({ size, color, delay, startX, startY }) => {
   }, []);
   const orbStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }], opacity: opacity.value }));
   return <Animated.View style={[orbStyle, { position: "absolute", width: size, height: size, borderRadius: size / 2, backgroundColor: color, left: startX, top: startY }]} />;
-};
+});
 
 // ── Today's Summary Strip ─────────────────────────────────────────────────────
-const TodaySummaryStrip = ({ todayIncome, todayExpense, todayTxCount }) => {
+const TodaySummaryStrip = React.memo(({ todayIncome, todayExpense, todayTxCount }) => {
   const todayNet = todayIncome - todayExpense;
   const isNetPos = todayNet >= 0;
 
@@ -123,18 +124,18 @@ const TodaySummaryStrip = ({ todayIncome, todayExpense, todayTxCount }) => {
       </LinearGradient>
     </Animated.View>
   );
-};
+});
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const HomeScreen = ({
   overrideExpenses,
   overrideIncomes,
   overrideLoading,
-  cashbookMultiSelectData,
+  cashbookOptions,
   selectedCashbookIds,
-  onCashbookMultiChange,
+  selectedCashbookNames,
+  onCashbookChange,
   onViewTransactions,
-  onDateRangeNavigate,
   showCashbookSelector = false,
   hideActions = false,
 }) => {
@@ -156,6 +157,24 @@ const HomeScreen = ({
   const [modalStep, setModalStep] = useState("month");
   const [tempMonth, setTempMonth] = useState(selectedMonth);
   const [tempYear, setTempYear] = useState(selectedYear);
+
+  // ── Date Range filter ──────────────────────────────────────────────────────
+  // DateRangeSection (This Week / This Month / Custom) hands back two
+  // {day,month,year} date-parts once the user taps "View Transactions". We
+  // convert those to a concrete Date range and hand off to the existing
+  // ListExpensesScreen — which does the actual filtering — flagged as
+  // "locked" so the user can't then override it from inside that screen.
+  const handleDateRangeApply = useCallback((startPart, endPart) => {
+    const start = new Date(startPart.year, startPart.month, startPart.day, 0, 0, 0, 0);
+    const end = new Date(endPart.year, endPart.month, endPart.day, 23, 59, 59, 999);
+    navigation.navigate("ListExpenses", {
+      cashbookScope: showCashbookSelector,
+      cashbookIds: showCashbookSelector ? selectedCashbookIds : undefined,
+      dateRangeStart: start.toISOString(),
+      dateRangeEnd: end.toISOString(),
+      lockDateFilter: true,
+    });
+  }, [navigation, showCashbookSelector, selectedCashbookIds]);
 
   const toJSDate = (d) => {
     if (!d) return null;
@@ -228,11 +247,15 @@ const HomeScreen = ({
     );
   }
 
-  const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  // Note: these run after the loading/error early-returns above, so they are
+  // plain values rather than useMemo/useCallback (hooks can't follow a
+  // conditional return). They're cheap to (re)build, unlike the memoized
+  // useTransactions()-derived data above.
+  const monthNames = MONTH_NAMES;
   const yearOptions = Array.from({ length: 11 }, (_, i) => now.getFullYear() - 2 + i);
   const isPositive = balance >= 0;
 
-  // 1×3 action row — Cash In removed
+  // 1×3 action row — Cash In removed.
   const actionButtons = [
     { label: "Cash Out", icon: "remove-circle", screen: "AddExpense",   params: { initialTab: 0 }, color: ["#FF6B6B", "#E53935"] },
     { label: "History",  icon: "list",           screen: "ListExpenses", params: {},                color: ["#5C9BFF", "#1565C0"] },
@@ -319,11 +342,12 @@ const HomeScreen = ({
         {/* Balance Card */}
         <View style={styles.topWrap}>
           {showCashbookSelector && (
-            <View style={styles.cashbookPickerRow}>
+            <View style={styles.cashbookSection}>
               <CashbookMultiSelect
-                data={cashbookMultiSelectData || []}
-                value={selectedCashbookIds || []}
-                onChange={onCashbookMultiChange}
+                options={cashbookOptions || []}
+                selectedIds={selectedCashbookIds || []}
+                selectedNames={selectedCashbookNames}
+                onChange={onCashbookChange}
               />
             </View>
           )}
@@ -360,6 +384,8 @@ const HomeScreen = ({
                 )}
               </View>
 
+              {/* Today In / Today Out removed — the same numbers are already
+                  shown in the Today summary cards below (TodaySummaryStrip). */}
             </LinearGradient>
           </Animated.View>
         </View>
@@ -369,7 +395,9 @@ const HomeScreen = ({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 110 }}
         >
-          {/* 1×3 Action Row */}
+          {/* Date Range filter — presets or a custom range, ending in
+              "View Transactions" which hands off to ListExpensesScreen. */}
+          <DateRangeSection onApply={handleDateRangeApply} />
           {/* {!hideActions && <View style={styles.actionsRow}>
             {actionButtons.map((btn, i) => (
               <Animated.View
@@ -390,10 +418,6 @@ const HomeScreen = ({
             ))}
           </View>} */}
 
-          {showCashbookSelector && onDateRangeNavigate && (
-            <DateRangeSection onApply={onDateRangeNavigate} />
-          )}
-
           {/* Today's Summary Strip */}
           <TodaySummaryStrip
             todayIncome={todayIncome}
@@ -408,20 +432,23 @@ const HomeScreen = ({
             <TopCategoriesSection monthExpenses={monthExpenses} />
           </View>
         </ScrollView>
-
       </SafeAreaView>
     </View>
   );
 };
 
-export default memo(HomeScreen);
+// Memoized: StatisticsScreen now passes useCallback-wrapped handlers and a
+// stable-shaped selectedCashbookIds array, so HomeScreen can safely skip
+// re-rendering (and thus skip re-mounting/reflowing CashbookMultiSelect,
+// FloatingOrbs, etc.) when nothing it actually uses has changed.
+export default React.memo(HomeScreen);
 
 // ── Base styles ───────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#050D1A" },
   safeArea: { flex: 1 },
   topWrap: { paddingHorizontal: 16, paddingTop: 14 },
-  cashbookPickerRow: { flexDirection: "row", marginBottom: 12, width: "100%" },
+  cashbookSection: { marginBottom: 12 },
   container: { flex: 1, padding: 16 },
   loader: { flex: 1, justifyContent: "center", alignItems: "center" },
   errorTitle: { fontWeight: "700", fontSize: 18, marginBottom: 8 },
